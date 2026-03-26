@@ -1,0 +1,37 @@
+[gd_scene format=3 uid="uid://cxvfxlgim4sig"]
+
+[ext_resource type="Script" uid="uid://c66w0a8rsmhmy" path="res://scenes/main/camera_gestor.gd" id="1_hyk8p"]
+[ext_resource type="Script" uid="uid://duuufdamjugq0" path="res://scenes/main/grid.gd" id="1_ow5a4"]
+[ext_resource type="Script" uid="uid://yeh4qxrjvm6h" path="res://scenes/main/game_manager.gd" id="2_iuonh"]
+
+[node name="TremOS_Main" type="Node2D" unique_id=1195256865]
+
+[node name="FundoMapa" type="ColorRect" parent="." unique_id=1209613180]
+custom_minimum_size = Vector2(1150, 640)
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -10000.0
+offset_top = -10000.0
+offset_right = 10000.0
+offset_bottom = 10000.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.60784316, 0.6745098, 0.42745098, 1)
+
+[node name="Mapa" type="Node2D" parent="." unique_id=1862360850]
+
+[node name="LinhasDoGrid" type="Control" parent="Mapa" unique_id=942156144]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+mouse_filter = 2
+script = ExtResource("1_ow5a4")
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1186295911]
+script = ExtResource("1_hyk8p")
+
+[node name="MesaDoSecretario" type="Node2D" parent="." unique_id=2122046260]
+script = ExtResource("2_iuonh")

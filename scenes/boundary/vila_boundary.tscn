@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://crlf8owtiet01"]
+
+[node name="VilaBoundary" type="Node2D" unique_id=365878682]
+
+[node name="Polygon2D" type="Polygon2D" parent="." unique_id=572615440]
+color = Color(0.003921569, 0.003921569, 0.41568628, 0.15294118)
+polygon = PackedVector2Array(192, 184, 256, 128, 320, 128, 384, 192, 384, 256, 320, 320, 256, 320, 192, 256)

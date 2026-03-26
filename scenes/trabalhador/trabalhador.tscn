@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://dvnqic76xu7c"]
+
+[ext_resource type="Script" uid="uid://dc17kuojn2p8o" path="res://scenes/trabalhador/trabalhador.gd" id="1_rexvn"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_6lv8p"]
+size = Vector2(8, 16)
+
+[node name="Trabalhador" type="CharacterBody2D" unique_id=1398791685]
+script = ExtResource("1_rexvn")
+
+[node name="Polygon2D" type="Polygon2D" parent="." unique_id=197219688]
+polygon = PackedVector2Array(16, 8, 24, 8, 24, 24, 16, 24)
+
+[node name="SensorProximidade" type="Area2D" parent="." unique_id=741176089]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="SensorProximidade" unique_id=495590575]
+position = Vector2(20, 16)
+shape = SubResource("RectangleShape2D_6lv8p")

@@ -1,0 +1,96 @@
+[gd_scene format=3 uid="uid://cxvfxlgim4sig"]
+
+[ext_resource type="Script" uid="uid://c66w0a8rsmhmy" path="res://scenes/main/camera_gestor.gd" id="1_hyk8p"]
+[ext_resource type="Texture2D" uid="uid://q7jyhi3ndgap" path="res://assets/base_relogio.png" id="2_6q06x"]
+[ext_resource type="Script" uid="uid://yeh4qxrjvm6h" path="res://scenes/main/game_manager.gd" id="2_iuonh"]
+[ext_resource type="Texture2D" uid="uid://bmb1gq81k6dgw" path="res://icon.svg" id="2_k2fmo"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_hyk8p"]
+font_size = 36
+outline_color = Color(0, 0, 0, 1)
+shadow_size = 5
+shadow_color = Color(0, 0, 0, 1)
+
+[node name="TremOS_Main" type="Node2D" unique_id=1195256865]
+
+[node name="Mapa" type="Node2D" parent="." unique_id=1862360850]
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1186295911]
+script = ExtResource("1_hyk8p")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=310674242]
+
+[node name="InterfaceHUD" type="Control" parent="CanvasLayer" unique_id=1307145549]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ContainerTempo" type="HBoxContainer" parent="CanvasLayer/InterfaceHUD" unique_id=1820625798]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -253.0
+offset_top = 30.0
+offset_right = -40.0
+offset_bottom = 70.0
+grow_horizontal = 0
+theme_override_constants/separation = 25
+
+[node name="BtnPause" type="Button" parent="CanvasLayer/InterfaceHUD/ContainerTempo" unique_id=1870320700]
+layout_mode = 2
+text = "||"
+
+[node name="Btn1x" type="Button" parent="CanvasLayer/InterfaceHUD/ContainerTempo" unique_id=790621456]
+layout_mode = 2
+text = ">"
+
+[node name="Btn2x" type="Button" parent="CanvasLayer/InterfaceHUD/ContainerTempo" unique_id=1588764410]
+layout_mode = 2
+text = ">>"
+
+[node name="Btn3x" type="Button" parent="CanvasLayer/InterfaceHUD/ContainerTempo" unique_id=1861740306]
+layout_mode = 2
+text = ">>>"
+
+[node name="LabelTempo" type="Label" parent="CanvasLayer/InterfaceHUD/ContainerTempo" unique_id=1219088487]
+layout_mode = 2
+text = "Seg, Semana 1, Mês 1"
+label_settings = SubResource("LabelSettings_hyk8p")
+
+[node name="RelogioVisual" type="TextureProgressBar" parent="CanvasLayer/InterfaceHUD/ContainerTempo" unique_id=1651996622]
+layout_mode = 2
+fill_mode = 4
+texture_under = ExtResource("2_6q06x")
+texture_progress = ExtResource("2_k2fmo")
+
+[node name="PainelSuprimentos" type="VBoxContainer" parent="CanvasLayer/InterfaceHUD" unique_id=285672451]
+layout_mode = 1
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 60.0
+offset_bottom = 124.0
+
+[node name="LabelAco" type="Label" parent="CanvasLayer/InterfaceHUD/PainelSuprimentos" unique_id=1959378775]
+layout_mode = 2
+
+[node name="LabelConcreto" type="Label" parent="CanvasLayer/InterfaceHUD/PainelSuprimentos" unique_id=1296874500]
+layout_mode = 2
+
+[node name="LabelMetal" type="Label" parent="CanvasLayer/InterfaceHUD/PainelSuprimentos" unique_id=376654840]
+layout_mode = 2
+
+[node name="LabelMadeira" type="Label" parent="CanvasLayer/InterfaceHUD/PainelSuprimentos" unique_id=1510803493]
+layout_mode = 2
+
+[node name="MesaDoSecretario" type="Node2D" parent="." unique_id=2122046260]
+script = ExtResource("2_iuonh")
+casas_por_vilarejo = null
+buffer_distancia = null
+
+[node name="TimerCycle" type="Timer" parent="MesaDoSecretario" unique_id=1071890736]
+
+[node name="TimerSpawnCasas" type="Timer" parent="MesaDoSecretario" unique_id=40007744]

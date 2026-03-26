@@ -1,0 +1,1 @@
+(for /r %f in (*.gd *.tscn *.tres *.cfg *.import *.godot) do @echo ===== %f ===== && type "%f") > projeto_tremos.txt

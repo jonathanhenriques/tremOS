@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://cfbf5ccq60i46"]
+
+[node name="CasaGeometrica" type="Node2D" unique_id=460611418]
+
+[node name="BaseAzul" type="ColorRect" parent="." unique_id=854372708]
+offset_left = -16.0
+offset_top = -16.0
+offset_right = 16.0
+offset_bottom = 16.0
+color = Color(0.98317426, 0.8773905, 0.7460438, 1)
+
+[node name="TelhadoVermelho" type="Polygon2D" parent="." unique_id=1219519423]
+color = Color(0.8980392, 0.22352941, 0.20784314, 1)
+polygon = PackedVector2Array(-16, -16, 0, -40, 16, -16)

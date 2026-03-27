@@ -1,4 +1,4 @@
-# game_manager.gd - Sistema de Lastro e Velocidade Dinâmica (SEM ELIF)
+# game_manager.gd - Sistema de Lastro e Velocidade Dinâmica
 extends Node2D
 
 @export var tamanho_mapa: int = 20
@@ -18,10 +18,13 @@ var popup_vitoria: ConfirmationDialog
 var popup_relatorio: AcceptDialog 
 var popup_orcamento: AcceptDialog
 
+# Variável para o Botão de Pause
+var botao_pause: Button
+
 # --- ORÇAMENTO E DESASTRES ---
 var verba_vias: float = 100.0 
 var verba_trens: float = 100.0 
-var limite_seguro_vias: float = 50.0 # Abaixo de 50%, os trilhos quebram!
+var limite_seguro_vias: float = 50.0 
 var trilhos_quebrados = [] 
 
 var tempo_fase: float = 0.0
@@ -56,26 +59,29 @@ func _ready():
 
 func _process(delta):
 	if not fase_concluida:
-		if Engine.time_scale > 0: 
+		if not get_tree().paused:
 			tempo_fase += delta
 			tempo_semana += delta
 			if tempo_semana >= duracao_semana:
 				_gerar_relatorio_semanal()
-			_atualizar_status_bar()
+		_atualizar_status_bar()
 
 func _setup_dialogos():
 	popup_confirmacao = ConfirmationDialog.new(); add_child(popup_confirmacao)
 	popup_confirmacao.title = "Aviso de Engenharia"; popup_confirmacao.dialog_text = "Deseja remover esta estação?"
+	popup_confirmacao.process_mode = Node.PROCESS_MODE_ALWAYS
 	
 	popup_vitoria = ConfirmationDialog.new(); add_child(popup_vitoria)
 	popup_vitoria.title = "VITÓRIA!"; popup_vitoria.ok_button_text = "Próxima Fase"; popup_vitoria.cancel_button_text = "Continuar"
 	popup_vitoria.confirmed.connect(_avancar_fase)
+	popup_vitoria.process_mode = Node.PROCESS_MODE_ALWAYS
 
 	popup_relatorio = AcceptDialog.new(); add_child(popup_relatorio)
 	popup_relatorio.title = "Balanço Financeiro Semanal"
 	popup_relatorio.ok_button_text = "Iniciar Nova Semana"
 	popup_relatorio.exclusive = true 
 	popup_relatorio.confirmed.connect(_iniciar_nova_semana)
+	popup_relatorio.process_mode = Node.PROCESS_MODE_ALWAYS
 	
 	_construir_painel_orcamento()
 
@@ -84,6 +90,7 @@ func _construir_painel_orcamento():
 	popup_orcamento.title = "Orçamento de Utilidades e Transportes"
 	popup_orcamento.ok_button_text = "Aplicar Verbas"
 	popup_orcamento.exclusive = true
+	popup_orcamento.process_mode = Node.PROCESS_MODE_ALWAYS
 	
 	var vbox = VBoxContainer.new(); popup_orcamento.add_child(vbox)
 	
@@ -99,8 +106,7 @@ func _construir_painel_orcamento():
 	var val_trens = Label.new(); val_trens.text = "Verba: 100%"; vbox.add_child(val_trens)
 	slider_trens.value_changed.connect(func(v): verba_trens = v; val_trens.text = "Verba: " + str(v) + "%")
 	
-	popup_orcamento.about_to_popup.connect(func(): Engine.time_scale = 0.0)
-	popup_orcamento.confirmed.connect(func(): Engine.time_scale = velocidade_jogo)
+	popup_orcamento.confirmed.connect(func(): if not get_tree().paused: Engine.time_scale = velocidade_jogo)
 
 func _avancar_fase():
 	nivel_atual += 1
@@ -108,7 +114,7 @@ func _avancar_fase():
 	_iniciar_fase(nivel_atual)
 
 func _gerar_relatorio_semanal():
-	Engine.time_scale = 0.0 
+	get_tree().paused = true
 	var principal_pos = Vector2i(-1, -1); var alvos = []
 	for x in range(tamanho_mapa):
 		for y in range(tamanho_mapa):
@@ -135,12 +141,11 @@ func _gerar_relatorio_semanal():
 	var custo_total = custo_trilhos_real + custo_trens_real
 	dinheiro -= custo_total 
 	
-	# --- LÓGICA DO LASTRO DE DESASTRES ---
 	var vias_quebradas_agora = 0
 	var deficit_critico = limite_seguro_vias - verba_vias
 	
-	if deficit_critico > 0.0: # Só quebra se a verba estiver ABAIXO de 50%
-		var chance_quebra = (deficit_critico / 50.0) * 0.40 # Até 40% de chance por tile
+	if deficit_critico > 0.0: 
+		var chance_quebra = (deficit_critico / 50.0) * 0.40 
 		for pos in tiles_ativos_pos:
 			if randf() < chance_quebra:
 				if not trilhos_quebrados.has(pos):
@@ -150,18 +155,14 @@ func _gerar_relatorio_semanal():
 					if t: t.queue_redraw()
 	_reconstruir_malha() 
 	
-	var vel_trens_atual = int((verba_trens / 100.0) * (verba_vias / 100.0) * 100)
-	if vel_trens_atual < 15: vel_trens_atual = 15 # Máximo de lentidão é 15% da velocidade
-	
 	var texto = "RESUMO DA SEMANA " + str(semana_atual) + "\n\n"
-	texto += "Vias em Uso (" + str(int(verba_vias)) + "% Verba): - $" + str(custo_trilhos_real) + "\n"
-	texto += "Trens Ativos (" + str(int(verba_trens)) + "% Verba): - $" + str(custo_trens_real) + "\n"
-	texto += "Receita de Entregas: + $" + str(receita_semanal) + "\n"
+	texto += "Vias: - $" + str(custo_trilhos_real) + "\n"
+	texto += "Trens: - $" + str(custo_trens_real) + "\n"
+	texto += "Receita: + $" + str(receita_semanal) + "\n"
 	texto += "--------------------------------------\n"
-	texto += "Eficiência Logística (Velocidade): " + str(vel_trens_atual) + "%\n"
 	if vias_quebradas_agora > 0:
-		texto += "⚠️ ALERTA: " + str(vias_quebradas_agora) + " trilhos cederam por falta de manutenção!\n"
-	texto += "\nSALDO ATUAL: $" + str(dinheiro)
+		texto += "⚠️ " + str(vias_quebradas_agora) + " trilhos cederam!\n"
+	texto += "\nSALDO: $" + str(dinheiro)
 	
 	popup_relatorio.dialog_text = texto
 	popup_relatorio.popup_centered()
@@ -176,13 +177,13 @@ func consertar_trilho(x: int, y: int):
 			if t: t.queue_redraw()
 
 func _iniciar_nova_semana():
-	Engine.time_scale = velocidade_jogo 
+	get_tree().paused = false
 	receita_semanal = 0
 	tempo_semana = 0.0
 	semana_atual += 1
 
 func _iniciar_fase(num):
-	Engine.time_scale = velocidade_jogo
+	get_tree().paused = false
 	fase_concluida = false; tempo_fase = 0.0; tempo_semana = 0.0; semana_atual = 1; receita_semanal = 0
 	dinheiro = 2000 + (num * 500)
 	trilhos_quebrados.clear()
@@ -199,22 +200,44 @@ func _iniciar_fase(num):
 
 func _criar_ui_sistema_soko():
 	var canvas = CanvasLayer.new(); add_child(canvas)
+	canvas.process_mode = Node.PROCESS_MODE_ALWAYS
+	
 	var topo = Panel.new(); topo.custom_minimum_size = Vector2(0, 90); topo.set_anchors_preset(Control.PRESET_TOP_WIDE); canvas.add_child(topo)
 	info_label = Label.new(); topo.add_child(info_label); info_label.position = Vector2(160, 5)
+	
 	var btn_orc = Button.new(); btn_orc.text = "ORÇAMENTO"; btn_orc.position = Vector2(20, 5); btn_orc.custom_minimum_size = Vector2(120, 30)
 	btn_orc.add_theme_color_override("font_color", Color.YELLOW)
 	btn_orc.pressed.connect(func(): popup_orcamento.popup_centered())
 	topo.add_child(btn_orc)
+	
+	botao_pause = Button.new(); botao_pause.text = "PAUSE"; botao_pause.position = Vector2(20, 45); botao_pause.custom_minimum_size = Vector2(120, 35)
+	botao_pause.pressed.connect(_alternar_pause)
+	topo.add_child(botao_pause)
+	
 	var scroll = ScrollContainer.new(); scroll.custom_minimum_size = Vector2(850, 60); scroll.position = Vector2(160, 30); topo.add_child(scroll)
 	sub_menu_container = HBoxContainer.new(); scroll.add_child(sub_menu_container)
 	var lateral = PanelContainer.new(); lateral.custom_minimum_size = Vector2(130, 0); lateral.set_anchors_preset(Control.PRESET_LEFT_WIDE); lateral.offset_top = 95; canvas.add_child(lateral)
+	
+	# --- CORREÇÃO DA LINHA 220 ---
 	var vbox = VBoxContainer.new(); lateral.add_child(vbox)
+	# -----------------------------
+	
 	for n in ["BORRACHA", "SELEÇÃO"]:
 		var b = Button.new(); b.text = n; b.custom_minimum_size = Vector2(110, 45); vbox.add_child(b)
 		b.pressed.connect(_selecionar_ferramenta.bind(0 if n=="BORRACHA" else 1))
 	for cat in categorias.keys():
 		var btn = Button.new(); btn.text = cat; btn.custom_minimum_size = Vector2(110, 45); btn.pressed.connect(_abrir_sub_menu.bind(cat)); vbox.add_child(btn)
 	_abrir_sub_menu("TRILHOS")
+
+func _alternar_pause():
+	if get_tree().paused == true:
+		get_tree().paused = false
+		botao_pause.text = "PAUSE"
+		botao_pause.add_theme_color_override("font_color", Color.WHITE)
+	else:
+		get_tree().paused = true
+		botao_pause.text = "CONTINUAR"
+		botao_pause.add_theme_color_override("font_color", Color.GREEN)
 
 func _abrir_sub_menu(cat):
 	categoria_atual = cat
@@ -235,9 +258,8 @@ func _atualizar_status_bar():
 		var string_metas = ""
 		for k in metas.keys():
 			if metas[k] > 0: string_metas += k.left(3) + ": " + str(estoque[k]) + "/" + str(metas[k]) + " | "
-		info_label.text = "T: %s | SEM: %d | $ %d | FASE %d | ATIVO: %s | %s" % [
-			_get_tempo_formatado(), semana_atual, dinheiro, nivel_atual, nomes_tiles[estado_selecionado], string_metas
-		]
+		var status_texto = "PLAY" if not get_tree().paused else "PLANEJAMENTO"
+		info_label.text = "[%s] T: %s | $ %d | FASE %d | ATIVO: %s | %s" % [status_texto, _get_tempo_formatado(), dinheiro, nivel_atual, nomes_tiles[estado_selecionado], string_metas]
 
 func gastar_dinheiro(id_ferramenta, pos_tela: Vector2 = Vector2.ZERO) -> bool:
 	var custo = custos_construcao.get(id_ferramenta, 0)
@@ -260,9 +282,17 @@ func reembolsar_dinheiro(id_ferramenta, pos_tela: Vector2):
 func _spawn_floating_text(pos: Vector2, txt: String, col: Color):
 	var l = Label.new(); l.text = txt; l.add_theme_color_override("font_color", col); l.add_theme_font_size_override("font_size", 22)
 	l.position = pos + Vector2(randf_range(-15, 15), randf_range(-15, 15)); l.z_index = 50; add_child(l)
-	var tw = create_tween(); tw.tween_property(l, "position", l.position + Vector2(0,-60), 1.0); tw.parallel().tween_property(l, "modulate:a", 0.0, 1.0); tw.tween_callback(l.queue_free)
+	l.process_mode = Node.PROCESS_MODE_ALWAYS
+	var tw = create_tween()
+	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS) 
+	tw.tween_property(l, "position", l.position + Vector2(0,-60), 1.0)
+	tw.parallel().tween_property(l, "modulate:a", 0.0, 1.0)
+	tw.tween_callback(l.queue_free)
 
 func _input(event):
+	if event.is_action_pressed("ui_cancel") or (event is InputEventKey and event.pressed and event.keycode == KEY_P):
+		_alternar_pause()
+
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
 			if get_viewport().get_mouse_position().x > 130:
@@ -304,7 +334,6 @@ func _reconstruir_malha():
 			if tipo == 7:
 				var t = _get_tile_at(x, y); if t and not t.chave_aberta: continue
 			if trilhos_quebrados.has(Vector2i(x,y)): continue 
-			
 			astar.add_point(x + y * tamanho_mapa, Vector2(x, y))
 			if tipo == 6: astar.add_point(x + y * tamanho_mapa + 1000, Vector2(x, y))
 	
@@ -312,20 +341,18 @@ func _reconstruir_malha():
 	for x in range(tamanho_mapa):
 		for y in range(tamanho_mapa):
 			var ta = matriz_mapa[x][y]
-			if not _eh_trilho_ou_estacao(ta): continue
-			if trilhos_quebrados.has(Vector2i(x,y)): continue 
-			
+			if not _eh_trilho_ou_estacao(ta) or trilhos_quebrados.has(Vector2i(x,y)): continue 
 			for d in dirs:
 				var nx = x+d.x; var ny = y+d.y
 				if nx>=0 and nx<tamanho_mapa and ny>=0 and ny<tamanho_mapa:
 					var tb = matriz_mapa[nx][ny]
 					if _eh_trilho_ou_estacao(tb) and not trilhos_quebrados.has(Vector2i(nx,ny)): 
 						_tentar_conectar(x,y,ta,nx,ny,tb,d)
+	# --- NOVO: Verifica se os trens atuais ainda têm caminho livre ---
 	_verificar_integridade_trens()
 
 func _tentar_conectar(ax, ay, ta, bx, by, tb, d):
-	if not _tem_saida(ta, d): return
-	if not _tem_saida(tb, -d): return
+	if not _tem_saida(ta, d) or not _tem_saida(tb, -d): return
 	var ida = ax + ay * tamanho_mapa; var idb = bx + by * tamanho_mapa
 	if ta == 6 and d.y != 0: ida += 1000
 	if tb == 6 and d.y != 0: idb += 1000
@@ -341,15 +368,28 @@ func _tem_saida(tipo, dir) -> bool:
 	if tipo in [5, 6, 7, 8, 17]: return true
 	return false
 
+# --- NOVO: Função para parar trens se o trilho quebrar ---
 func _verificar_integridade_trens():
-	var rem = []
+	var ids_para_remover = []
 	for id in trens_ativos.keys():
-		var t = trens_ativos[id]; var o = t.get_meta("origem"); var d = t.get_meta("destino")
-		if astar.get_id_path(o.x + o.y*tamanho_mapa, d.x + d.y*tamanho_mapa).size() < 2: rem.append(id)
-	for id in rem: if is_instance_valid(trens_ativos[id]): trens_ativos[id].queue_free(); trens_ativos.erase(id)
+		var trem = trens_ativos[id]
+		var origem = trem.get_meta("origem")
+		var destino = trem.get_meta("destino")
+		
+		# Verifica se ainda existe um caminho entre as estações usando o AStar atualizado
+		var path = astar.get_id_path(origem.x + origem.y * tamanho_mapa, destino.x + destino.y * tamanho_mapa)
+		
+		# Se o caminho sumiu (size < 2), o trem "quebra"
+		if path.size() < 2:
+			ids_para_remover.append(id)
+	
+	for id in ids_para_remover:
+		if is_instance_valid(trens_ativos[id]):
+			trens_ativos[id].queue_free() # Remove o trem do mapa
+		trens_ativos.erase(id) # Remove do dicionário
 
 func tentar_lancar_trem():
-	if Engine.time_scale == 0: return 
+	if get_tree().paused == true: return 
 	var principal = Vector2i(-1, -1); var alvos = []
 	for x in range(tamanho_mapa):
 		for y in range(tamanho_mapa):
@@ -362,7 +402,6 @@ func tentar_lancar_trem():
 			var pts = []; for pid in p_ids: pts.append(astar.get_point_position(pid))
 			var id = "T_%d_%d_%d" % [d.x, d.y, Time.get_ticks_msec()]
 			_spawnar_trem(pts, id, estacoes_oferta.get(d, "LEITE"), principal, d)
-	_atualizar_status_bar()
 
 func _prever_pincel_magico(x, y) -> int:
 	var dirs = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]; var v = []
@@ -384,7 +423,6 @@ func _prever_pincel_magico(x, y) -> int:
 	return tipo
 
 func aplicar_pincel_magico(x, y):
-	if Engine.time_scale == 0: return 
 	if x < 0 or x >= tamanho_mapa or y < 0 or y >= tamanho_mapa: return
 	if matriz_mapa[x][y] in [17, 8, 10]: return
 	var tipo = _prever_pincel_magico(x, y)
@@ -399,41 +437,29 @@ func _spawnar_trem(pontos, id, carga, o, d):
 	var t = Node2D.new(); t.name = id; t.z_index = 20; add_child(t); trens_ativos[id] = t
 	var loc = ColorRect.new(); loc.size = Vector2(40, 30); loc.color = Color(0.1, 0.1, 0.1); t.add_child(loc)
 	var vag = ColorRect.new(); vag.name = "Vagao"; vag.size = Vector2(25, 20); vag.color = Color(0.3, 0.3, 0.3); vag.position = Vector2(42, 5); t.add_child(vag)
-	t.set_meta("origem", o); t.set_meta("destino", d); t.set_meta("carga", carga)
+	
+	# Guardamos os dados de origem e destino para verificação futura
+	t.set_meta("origem", o)
+	t.set_meta("destino", d)
+	
 	var pts = []; for p in pontos: pts.append(Vector2(p.x*100 + 10, p.y*100 + 35))
 	var p_rev = pts.duplicate(); p_rev.reverse()
 	
-	# CÁLCULO DA LENTIDÃO: Base 0.4s por quadrado. Se faltar verba, fica mais lento (número sobe).
-	var fator_frota = verba_trens / 100.0
-	if fator_frota < 0.2: fator_frota = 0.2 # O limite absoluto é 20% da velocidade original
-	
-	var fator_vias = 1.0
-	if verba_vias < 100.0:
-		fator_vias = verba_vias / 100.0
-		if fator_vias < 0.5: fator_vias = 0.5 # A via piora no máximo 50% do trajeto
-		
-	var tempo_base_por_tile = 0.4
-	var tempo_lento = tempo_base_por_tile / (fator_frota * fator_vias)
-	
+	var vel = 0.4 / (verba_trens/100.0 * verba_vias/100.0)
 	var tw = create_tween().set_loops()
-	for p in pts: tw.tween_property(t, "position", p, tempo_lento)
+	for p in pts: tw.tween_property(t, "position", p, vel)
 	tw.tween_callback(func(): if is_instance_valid(t): t.get_node("Vagao").color = cores_carga[carga])
-	for p in p_rev: tw.tween_property(t, "position", p, tempo_lento)
+	for p in p_rev: tw.tween_property(t, "position", p, vel)
 	tw.tween_callback(func():
 		if is_instance_valid(t):
 			t.get_node("Vagao").color = Color(0.3, 0.3, 0.3); estoque[carga] += 1; dinheiro += recompensas[carga]; receita_semanal += recompensas[carga]
 			_spawn_floating_text(t.position, "+ $" + str(recompensas[carga]), Color.GREEN); _atualizar_status_bar(); _checar_vitoria())
-	return t
 
 func _checar_vitoria():
-	if fase_concluida: return
 	var ok = true
-	for r in metas.keys():
-		if metas[r] > 0 and estoque[r] < metas[r]: 
-			ok = false
-			break
-	if ok: 
-		fase_concluida = true; popup_vitoria.dialog_text = "Metas atingidas!\nTempo Final: %s" % _get_tempo_formatado(); popup_vitoria.popup_centered()
+	for r in metas.keys(): if metas[r] > 0 and estoque[r] < metas[r]: ok = false
+	if ok and not fase_concluida: 
+		fase_concluida = true; popup_vitoria.dialog_text = "Fase concluída em %s" % _get_tempo_formatado(); popup_vitoria.popup_centered()
 
 func _get_tile_at(x, y):
 	for t in mapa_node.get_children(): if t.has_method("get_grid_pos") and t.get_grid_pos() == Vector2i(x, y): return t
@@ -443,23 +469,17 @@ func _gerar_mapa_nivel_1():
 	metas["LEITE"] = 3; metas["MADEIRA"] = 2
 	for x in range(tamanho_mapa): _aplicar_no_mapa(x, 9, 11); _aplicar_no_mapa(x, 10, 11)
 	_aplicar_no_mapa(2, 2, 17); _aplicar_estacao_oferta(17, 17, "LEITE"); _aplicar_estacao_oferta(4, 15, "MADEIRA")
-	var arvores = [Vector2i(2, 5), Vector2i(2, 6), Vector2i(17, 13), Vector2i(17, 14)]
-	for a in arvores: _aplicar_no_mapa(a.x, a.y, 9)
 
 func _gerar_mapa_nivel_2():
 	metas["LEITE"] = 2; metas["MADEIRA"] = 4; metas["TRIGO"] = 2
 	for y in range(tamanho_mapa): _aplicar_no_mapa(8, y, 11)
 	_aplicar_no_mapa(17, 2, 17); _aplicar_estacao_oferta(2, 17, "LEITE"); _aplicar_estacao_oferta(2, 2, "MADEIRA"); _aplicar_estacao_oferta(17, 17, "TRIGO")
-	var arvores = [Vector2i(16, 2), Vector2i(17, 3), Vector2i(8, 8)]
-	for a in arvores: _aplicar_no_mapa(a.x, a.y, 9)
 
 func _gerar_mapa_nivel_3():
 	metas["TRIGO"] = 2; metas["ACO"] = 3; metas["CARVAO"] = 2
 	for x in range(tamanho_mapa): _aplicar_no_mapa(x, 10, 11)
 	for y in range(tamanho_mapa): _aplicar_no_mapa(10, y, 14)
 	_aplicar_no_mapa(2, 2, 17); _aplicar_estacao_oferta(17, 2, "ACO"); _aplicar_estacao_oferta(2, 17, "CARVAO"); _aplicar_estacao_oferta(17, 17, "TRIGO")
-	var arvores = [Vector2i(5, 5), Vector2i(15, 15), Vector2i(5, 15)]
-	for a in arvores: _aplicar_no_mapa(a.x, a.y, 9)
 
 func _aplicar_estacao_oferta(x, y, tipo): estacoes_oferta[Vector2i(x, y)] = tipo; _aplicar_no_mapa(x, y, 8)
 func _aplicar_no_mapa(x, y, estado):

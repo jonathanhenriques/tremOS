@@ -15,6 +15,9 @@ var _tolerancia_arraste: float = 10.0 # Pixels de folga para não mover a tela a
 func _ready():
 	self.make_current()
 	RenderingServer.set_default_clear_color(Color("#004d40")) 
+	
+	# PERMITIR MOVIMENTAÇÃO E ZOOM NO PAUSE
+	self.process_mode = Node.PROCESS_MODE_ALWAYS
 
 # _input lê o movimento ANTES dos tiles, garantindo o arraste em qualquer lugar
 func _input(event):

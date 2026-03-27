@@ -35,4 +35,4 @@ script = ExtResource("1_hyk8p")
 
 [node name="MesaDoSecretario" type="Node2D" parent="." unique_id=2122046260]
 script = ExtResource("2_iuonh")
-velocidade_jogo = 5.0
+velocidade_jogo = 2.0

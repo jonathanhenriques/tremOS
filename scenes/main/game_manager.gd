@@ -1,4 +1,4 @@
-# game_manager.gd - Logística, Finanças e Proteção Total (SEM ELIF)
+# game_manager.gd - Economia, Cronômetro e Pincel Preditivo (SEM ELIF)
 extends Node2D
 
 @export var tamanho_mapa: int = 20
@@ -16,7 +16,6 @@ var categoria_atual = "TRILHOS"
 var popup_confirmacao: ConfirmationDialog
 var popup_vitoria: ConfirmationDialog
 
-# --- CRONÔMETRO E ECONOMIA ---
 var tempo_fase: float = 0.0
 var nivel_atual: int = 1
 var dinheiro: int = 1500
@@ -42,7 +41,6 @@ var nomes_tiles = {
 	12: "PONTE H", 13: "PONTE V", 15: "TÚNEL H", 16: "TÚNEL V", 23: "SEMÁFORO H", 24: "SEMÁFORO V"
 }
 
-# DECLARAÇÃO ESSENCIAL DO MAPA
 @onready var mapa_node = $"../Mapa"
 
 func _ready():
@@ -60,20 +58,35 @@ func _process(delta):
 		_atualizar_status_bar()
 
 func _setup_dialogos():
-	popup_confirmacao = ConfirmationDialog.new(); add_child(popup_confirmacao)
-	popup_confirmacao.title = "Aviso de Engenharia"; popup_confirmacao.dialog_text = "Deseja remover esta estação?"
+	popup_confirmacao = ConfirmationDialog.new()
+	add_child(popup_confirmacao)
+	popup_confirmacao.title = "Aviso de Engenharia"
+	popup_confirmacao.dialog_text = "Deseja remover esta estação?"
 	
-	popup_vitoria = ConfirmationDialog.new(); add_child(popup_vitoria)
-	popup_vitoria.title = "VITÓRIA!"; popup_vitoria.ok_button_text = "Próxima Fase"; popup_vitoria.cancel_button_text = "Continuar"
+	popup_vitoria = ConfirmationDialog.new()
+	add_child(popup_vitoria)
+	popup_vitoria.title = "VITÓRIA!"
+	popup_vitoria.ok_button_text = "Próxima Fase"
+	popup_vitoria.cancel_button_text = "Continuar"
 	popup_vitoria.confirmed.connect(func(): nivel_atual += 1; _iniciar_fase(nivel_atual))
 
 func _iniciar_fase(num):
-	fase_concluida = false; tempo_fase = 0.0; dinheiro = 1500 + (num * 500); estoque = {"LEITE": 0, "MADEIRA": 0, "TRIGO": 0}
-	estacoes_oferta.clear(); astar.clear()
-	for id in trens_ativos.keys(): if is_instance_valid(trens_ativos[id]): trens_ativos[id].queue_free()
+	fase_concluida = false
+	tempo_fase = 0.0
+	dinheiro = 1500 + (num * 500)
+	estoque = {"LEITE": 0, "MADEIRA": 0, "TRIGO": 0}
+	estacoes_oferta.clear()
+	astar.clear()
+	
+	for id in trens_ativos.keys(): 
+		if is_instance_valid(trens_ativos[id]): 
+			trens_ativos[id].queue_free()
 	trens_ativos.clear()
+	
 	for x in range(tamanho_mapa):
-		for y in range(tamanho_mapa): _aplicar_no_mapa(x, y, 2)
+		for y in range(tamanho_mapa): 
+			_aplicar_no_mapa(x, y, 2)
+	
 	if num == 1: _gerar_mapa_nivel_1()
 	if num >= 2: _gerar_mapa_nivel_2()
 	_atualizar_status_bar()
@@ -101,7 +114,8 @@ func _abrir_sub_menu(cat):
 		btn.pressed.connect(_selecionar_ferramenta.bind(id)); sub_menu_container.add_child(btn)
 
 func _selecionar_ferramenta(id):
-	estado_selecionado = id; _atualizar_status_bar()
+	estado_selecionado = id
+	_atualizar_status_bar()
 
 func _get_tempo_formatado() -> String:
 	var minutos = int(tempo_fase / 60)
@@ -124,6 +138,13 @@ func gastar_dinheiro(id_ferramenta, pos_tela: Vector2 = Vector2.ZERO) -> bool:
 		return true
 	return false
 
+func gastar_dinheiro_especifico(valor: int, pos_tela: Vector2) -> bool:
+	if dinheiro >= valor:
+		dinheiro -= valor; _atualizar_status_bar()
+		if pos_tela != Vector2.ZERO: _spawn_floating_text(pos_tela, "- $" + str(valor), Color.RED)
+		return true
+	return false
+
 func reembolsar_dinheiro(id_ferramenta, pos_tela: Vector2):
 	var valor = custos_construcao.get(id_ferramenta, 0)
 	if valor > 0:
@@ -137,15 +158,16 @@ func _spawn_floating_text(pos: Vector2, txt: String, col: Color):
 	var tw = create_tween(); tw.tween_property(l, "position", pos + jitter + Vector2(0,-60), 1.0); tw.parallel().tween_property(l, "modulate:a", 0.0, 1.0); tw.tween_callback(l.queue_free)
 
 func _input(event):
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			if get_viewport().get_mouse_position().x > 130:
-				var lista = categorias.get(categoria_atual, [])
-				if lista.size() > 1 and estado_selecionado in lista:
-					var idx = lista.find(estado_selecionado)
-					if event.button_index == MOUSE_BUTTON_WHEEL_UP: idx = (idx - 1 + lista.size()) % lista.size()
-					if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: idx = (idx + 1) % lista.size()
-					_selecionar_ferramenta(lista[idx]); get_viewport().set_input_as_handled()
+	if event is InputEventMouseButton:
+		if event.pressed:
+			if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				if get_viewport().get_mouse_position().x > 130:
+					var lista = categorias.get(categoria_atual, [])
+					if lista.size() > 1 and estado_selecionado in lista:
+						var idx = lista.find(estado_selecionado)
+						if event.button_index == MOUSE_BUTTON_WHEEL_UP: idx = (idx - 1 + lista.size()) % lista.size()
+						if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: idx = (idx + 1) % lista.size()
+						_selecionar_ferramenta(lista[idx]); get_viewport().set_input_as_handled()
 
 func _criar_matriz_vazia():
 	matriz_mapa.clear()
@@ -163,7 +185,9 @@ func _configurar_grid_visual():
 	var l = mapa_node.get_node_or_null("LinhasDoGrid"); if l: l.configurar(tamanho_mapa, tile_size)
 
 func atualizar_matriz(x, y, estado):
-	if x >= 0 and x < tamanho_mapa and y >= 0 and y < tamanho_mapa: matriz_mapa[x][y] = estado; _reconstruir_malha()
+	if x >= 0 and x < tamanho_mapa and y >= 0 and y < tamanho_mapa: 
+		matriz_mapa[x][y] = estado
+		_reconstruir_malha()
 
 func _eh_trilho_ou_estacao(tipo) -> bool:
 	return tipo in [3, 4, 18, 19, 20, 21, 5, 6, 7, 8, 17, 12, 13, 15, 16, 23, 24]
@@ -214,7 +238,8 @@ func _verificar_integridade_trens():
 	for id in trens_ativos.keys():
 		var t = trens_ativos[id]; var o = t.get_meta("origem"); var d = t.get_meta("destino")
 		if astar.get_id_path(o.x + o.y*tamanho_mapa, d.x + d.y*tamanho_mapa).size() < 2: rem.append(id)
-	for id in rem: if is_instance_valid(trens_ativos[id]): trens_ativos[id].queue_free(); trens_ativos.erase(id)
+	for id in rem: 
+		if is_instance_valid(trens_ativos[id]): trens_ativos[id].queue_free(); trens_ativos.erase(id)
 
 func tentar_lancar_trem():
 	var principal = Vector2i(-1, -1); var alvos = []
@@ -223,51 +248,66 @@ func tentar_lancar_trem():
 			if matriz_mapa[x][y] == 17: principal = Vector2i(x, y)
 			if matriz_mapa[x][y] == 8: alvos.append(Vector2i(x, y))
 	if principal == Vector2i(-1, -1): return
+	
+	var enviados = 0
 	for d in alvos:
 		var p_ids = astar.get_id_path(principal.x + principal.y*tamanho_mapa, d.x + d.y*tamanho_mapa)
 		if p_ids.size() > 1:
-			var pts = []; for pid in p_ids: pts.append(astar.get_point_position(pid))
+			var pts = []
+			for pid in p_ids: pts.append(astar.get_point_position(pid))
 			var id = "T_%d_%d_%d" % [d.x, d.y, Time.get_ticks_msec()]
 			_spawnar_trem(pts, id, estacoes_oferta.get(d, "LEITE"), principal, d)
-	_atualizar_status_bar()
+			enviados += 1
+	if enviados > 0: _atualizar_status_bar()
 
-# PINCEL MÁGICO PROTEGIDO CONTRA SOBREPOSIÇÃO DE ESTAÇÕES
-func aplicar_pincel_magico(x, y):
-	if x < 0 or x >= tamanho_mapa or y < 0 or y >= tamanho_mapa: return
-	if matriz_mapa[x][y] in [17, 8, 10]: return # BLOQUEIO DE ESTRUTURAS
-	
-	var dirs = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]; var v = []
+# --- PREVISÃO DO PINCEL MÁGICO ---
+func _prever_pincel_magico(x, y) -> int:
+	var dirs = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]
+	var v = []
 	for d in dirs:
 		var n = Vector2i(x,y)+d
 		if n.x>=0 and n.x<tamanho_mapa and n.y>=0 and n.y<tamanho_mapa:
 			if _eh_trilho_ou_estacao(matriz_mapa[n.x][n.y]): v.append(d)
-	
 	var tipo = 3
 	if v.size() == 2:
-		var d1 = v[0]; var d2 = v[1]
-		if d1.x != 0 and d2.x != 0: tipo = 3
-		if d1.y != 0 and d2.y != 0: tipo = 4
-		if (d1 == Vector2i(0,1) and d2 == Vector2i(-1,0)) or (d2 == Vector2i(0,1) and d1 == Vector2i(-1,0)): tipo = 18
-		if (d1 == Vector2i(0,-1) and d2 == Vector2i(-1,0)) or (d2 == Vector2i(0,-1) and d1 == Vector2i(-1,0)): tipo = 19
-		if (d1 == Vector2i(0,-1) and d2 == Vector2i(1,0)) or (d2 == Vector2i(0,-1) and d1 == Vector2i(1,0)): tipo = 20
-		if (d1 == Vector2i(0,1) and d2 == Vector2i(1,0)) or (d2 == Vector2i(0,1) and d1 == Vector2i(1,0)): tipo = 21
-	if v.size() == 3: tipo = 5
-	if v.size() == 4: tipo = 6
+		var d1=v[0]; var d2=v[1]
+		if d1.x!=0 and d2.x!=0: tipo=3
+		if d1.y!=0 and d2.y!=0: tipo=4
+		if (d1==Vector2i(0,1) and d2==Vector2i(-1,0)) or (d2==Vector2i(0,1) and d1==Vector2i(-1,0)): tipo=18
+		if (d1==Vector2i(0,-1) and d2==Vector2i(-1,0)) or (d2==Vector2i(0,-1) and d1==Vector2i(-1,0)): tipo=19
+		if (d1==Vector2i(0,-1) and d2==Vector2i(1,0)) or (d2==Vector2i(0,-1) and d1==Vector2i(1,0)): tipo=20
+		if (d1==Vector2i(0,1) and d2==Vector2i(1,0)) or (d2==Vector2i(0,1) and d1==Vector2i(1,0)): tipo=21
+	if v.size() == 3: tipo=5
+	if v.size() == 4: tipo=6
+	return tipo
+
+func aplicar_pincel_magico(x, y):
+	if x < 0 or x >= tamanho_mapa or y < 0 or y >= tamanho_mapa: return
+	if matriz_mapa[x][y] in [17, 8, 10]: return
+	
+	var tipo = _prever_pincel_magico(x, y)
 	
 	if matriz_mapa[x][y] != tipo:
 		var tile_antigo = matriz_mapa[x][y]
 		var pos_tela = Vector2(x*100+25, y*100)
 		if gastar_dinheiro(tipo, pos_tela):
 			if tile_antigo not in [2, 11, 14, 9, 10]: reembolsar_dinheiro(tile_antigo, pos_tela)
-			atualizar_matriz(x,y,tipo); var t=_get_tile_at(x,y); if t: t.estado_atual=tipo; t.queue_redraw()
+			atualizar_matriz(x,y,tipo)
+			var t=_get_tile_at(x,y)
+			if t: 
+				t.estado_atual=tipo
+				t.queue_redraw()
 
 func _spawnar_trem(pontos, id, carga, o, d):
 	var t = Node2D.new(); t.name = id; t.z_index = 20; add_child(t); trens_ativos[id] = t
 	var loc = ColorRect.new(); loc.size = Vector2(40, 30); loc.color = Color(0.1, 0.1, 0.1); t.add_child(loc)
 	var vag = ColorRect.new(); vag.name = "Vagao"; vag.size = Vector2(25, 20); vag.color = Color(0.3, 0.3, 0.3); vag.position = Vector2(42, 5); t.add_child(vag)
 	t.set_meta("origem", o); t.set_meta("destino", d); t.set_meta("carga", carga)
+	
 	var pts = []; for p in pontos: pts.append(Vector2(p.x*100 + 10, p.y*100 + 35))
-	var p_rev = pts.duplicate(); p_rev.reverse(); var tw = create_tween().set_loops()
+	var p_rev = pts.duplicate(); p_rev.reverse()
+	
+	var tw = create_tween().set_loops()
 	for p in pts: tw.tween_property(t, "position", p, 0.4)
 	tw.tween_callback(func(): if is_instance_valid(t): t.get_node("Vagao").color = cores_carga[carga])
 	for p in p_rev: tw.tween_property(t, "position", p, 0.4)
@@ -282,10 +322,14 @@ func _checar_vitoria():
 	var ok = true
 	if estoque["LEITE"] < metas["LEITE"]: ok = false
 	if estoque["MADEIRA"] < metas["MADEIRA"]: ok = false
-	if ok: fase_concluida = true; popup_vitoria.dialog_text = "Metas atingidas!\nTempo Final: %s" % _get_tempo_formatado(); popup_vitoria.popup_centered()
+	if ok: 
+		fase_concluida = true
+		popup_vitoria.dialog_text = "Metas atingidas!\nTempo Final: %s" % _get_tempo_formatado()
+		popup_vitoria.popup_centered()
 
 func _get_tile_at(x, y):
-	for t in mapa_node.get_children(): if t.has_method("get_grid_pos") and t.get_grid_pos() == Vector2i(x, y): return t
+	for t in mapa_node.get_children(): 
+		if t.has_method("get_grid_pos") and t.get_grid_pos() == Vector2i(x, y): return t
 	return null
 
 func _gerar_mapa_nivel_1():
@@ -302,8 +346,14 @@ func _gerar_mapa_nivel_2():
 	var arvores = [Vector2i(16, 2), Vector2i(17, 3), Vector2i(8, 8)]
 	for a in arvores: _aplicar_no_mapa(a.x, a.y, 9)
 
-func _aplicar_estacao_oferta(x, y, tipo): estacoes_oferta[Vector2i(x, y)] = tipo; _aplicar_no_mapa(x, y, 8)
+func _aplicar_estacao_oferta(x, y, tipo): 
+	estacoes_oferta[Vector2i(x, y)] = tipo; _aplicar_no_mapa(x, y, 8)
+
 func _aplicar_no_mapa(x, y, estado):
-	matriz_mapa[x][y] = estado; var t = _get_tile_at(x, y)
-	if t: t.estado_atual = estado; t.base_bioma = estado if estado in [2,11,14] else 2; t.queue_redraw()
+	matriz_mapa[x][y] = estado
+	var t = _get_tile_at(x, y)
+	if t: 
+		t.estado_atual = estado
+		t.base_bioma = estado if estado in [2,11,14] else 2
+		t.queue_redraw()
 	_reconstruir_malha()

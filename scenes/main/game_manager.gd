@@ -426,11 +426,16 @@ func _iniciar_fase(num):
 	estacoes_oferta.clear(); astar.clear()
 	for id in trens_ativos.keys(): if is_instance_valid(trens_ativos[id]): trens_ativos[id].queue_free()
 	trens_ativos.clear()
+	
+	# Usamos 'false' aqui para não travar o jogo limpando o mapa!
 	for x in range(tamanho_mapa):
-		for y in range(tamanho_mapa): _aplicar_no_mapa(x, y, 2)
+		for y in range(tamanho_mapa): _aplicar_no_mapa(x, y, 2, false)
+		
 	if num == 1: _gerar_mapa_nivel_1()
 	if num == 2: _gerar_mapa_nivel_2()
 	if num == 3: _gerar_mapa_nivel_3()
+	
+	_reconstruir_malha() # Recalcula a IA apenas UMA vez no final!
 	_atualizar_status_bar()
 
 func _checar_vitoria():
@@ -810,25 +815,33 @@ func _get_tile_at(x, y):
 	for t in mapa_node.get_children(): if t.has_method("get_grid_pos") and t.get_grid_pos() == Vector2i(x, y): return t
 	return null
 
+
 func _gerar_mapa_nivel_1():
 	metas["LEITE"] = 3; metas["MADEIRA"] = 2
-	for x in range(tamanho_mapa): _aplicar_no_mapa(x, 9, 11); _aplicar_no_mapa(x, 10, 11)
-	_aplicar_no_mapa(2, 2, 17); _aplicar_estacao_oferta(17, 17, "LEITE"); _aplicar_estacao_oferta(4, 15, "MADEIRA")
+	for x in range(tamanho_mapa): _aplicar_no_mapa(x, 9, 11, false); _aplicar_no_mapa(x, 10, 11, false)
+	_aplicar_no_mapa(2, 2, 17, false); _aplicar_estacao_oferta(17, 17, "LEITE", false); _aplicar_estacao_oferta(4, 15, "MADEIRA", false)
+
 
 func _gerar_mapa_nivel_2():
 	metas["LEITE"] = 2; metas["MADEIRA"] = 4; metas["TRIGO"] = 2
-	for y in range(tamanho_mapa): _aplicar_no_mapa(8, y, 11)
-	_aplicar_no_mapa(17, 2, 17); _aplicar_estacao_oferta(2, 17, "LEITE"); _aplicar_estacao_oferta(2, 2, "MADEIRA"); _aplicar_estacao_oferta(17, 17, "TRIGO")
+	for y in range(tamanho_mapa): _aplicar_no_mapa(8, y, 11, false)
+	_aplicar_no_mapa(17, 2, 17, false); _aplicar_estacao_oferta(2, 17, "LEITE", false); _aplicar_estacao_oferta(2, 2, "MADEIRA", false); _aplicar_estacao_oferta(17, 17, "TRIGO", false)
+
 
 func _gerar_mapa_nivel_3():
 	metas["TRIGO"] = 2; metas["ACO"] = 3; metas["CARVAO"] = 2
-	for x in range(tamanho_mapa): _aplicar_no_mapa(x, 10, 11)
-	for y in range(tamanho_mapa): _aplicar_no_mapa(10, y, 14)
-	_aplicar_no_mapa(2, 2, 17); _aplicar_estacao_oferta(17, 2, "ACO"); _aplicar_estacao_oferta(2, 17, "CARVAO"); _aplicar_estacao_oferta(17, 17, "TRIGO")
+	for x in range(tamanho_mapa): _aplicar_no_mapa(x, 10, 11, false)
+	for y in range(tamanho_mapa): _aplicar_no_mapa(10, y, 14, false)
+	_aplicar_no_mapa(2, 2, 17, false); _aplicar_estacao_oferta(17, 2, "ACO", false); _aplicar_estacao_oferta(2, 17, "CARVAO", false); _aplicar_estacao_oferta(17, 17, "TRIGO", false)
 
-func _aplicar_estacao_oferta(x, y, tipo): estacoes_oferta[Vector2i(x, y)] = tipo; _aplicar_no_mapa(x, y, 8)
 
-func _aplicar_no_mapa(x, y, estado):
+
+
+func _aplicar_estacao_oferta(x, y, tipo, reconstruir = true): 
+	estacoes_oferta[Vector2i(x, y)] = tipo; 
+	_aplicar_no_mapa(x, y, 8, reconstruir)
+
+func _aplicar_no_mapa(x, y, estado, reconstruir = true):
 	matriz_mapa[x][y] = estado; var t = _get_tile_at(x, y)
 	if t: t.estado_atual = estado; t.base_bioma = estado if estado in [2,11,14] else 2; t.queue_redraw()
-	_reconstruir_malha()
+	if reconstruir: _reconstruir_malha()

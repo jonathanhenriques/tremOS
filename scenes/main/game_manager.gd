@@ -1,4 +1,4 @@
-# game_manager.gd - Multas Ambientais e Reaproveitamento de Madeira
+# game_manager.gd - Multas, Sentidos Únicos e Rotatórias
 extends Node2D
 
 # --- CONFIGURAÇÕES GERAIS E EXPORTS ---
@@ -6,7 +6,7 @@ extends Node2D
 @export var tile_size: int = 100
 @export var velocidade_jogo: float = 1.0
 
-@export var modo_dev: bool = true # Ativa abas de Biomas/Estruturas e botão Continuar no Game Over
+@export var modo_dev: bool = true 
 
 # --- REFERÊNCIAS E NODES ---
 var tile_scene = preload("res://scenes/tile/tile.tscn")
@@ -23,7 +23,7 @@ var botao_pause: Button
 
 # --- VARIÁVEIS DE ESTADO E LÓGICA ---
 var matriz_mapa = []
-var estado_selecionado = 22 # Inicia no Pincel Mágico
+var estado_selecionado = 22 
 var astar = AStar2D.new()
 var trens_ativos = {}
 var jogo_perdido: bool = false
@@ -45,7 +45,7 @@ var limite_seguro_vias: float = 50.0
 var trilhos_quebrados = [] 
 var dinheiro: int = 2000 
 
-# --- GESTÃO AMBIENTAL (NOVO) ---
+# --- GESTÃO AMBIENTAL ---
 var custo_multa_arvore: int = 50
 var madeira_construcao: int = 0
 
@@ -64,7 +64,6 @@ var cores_carga = {"LEITE": Color.WHITE, "MADEIRA": Color("#8b5a2b"), "TRIGO": C
 var custos_construcao = {3: 10, 4: 10, 18: 15, 19: 15, 20: 15, 21: 15, 5: 30, 6: 40, 7: 50, 12: 100, 13: 100, 15: 150, 16: 150, 23: 50, 24: 50}
 var estacoes_oferta = {} 
 
-# --- UI LIMPA ---
 var categorias = {"TRILHOS": [22, 7, 23], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8]}
 var nomes_tiles = {0: "BORRACHA", 1: "SELEÇÃO", 2: "TERRA", 3: "TRILHO H", 4: "TRILHO V", 18: "┐ S-O", 19: "┘ N-O", 20: "└ N-L", 21: "┌ S-L", 5: "BIFURC. Y", 6: "CRUZAM. H", 7: "CHAVE", 17: "PRINCIPAL", 8: "ESTAÇÃO", 9: "ÁRVORE", 10: "PEDRA", 11: "ÁGUA", 14: "MONTANHA", 22: "PINCEL MÁGICO", 12: "PONTE H", 13: "PONTE V", 15: "TÚNEL H", 16: "TÚNEL V", 23: "SEMÁFORO", 24: "SEMÁFORO V"}
 
@@ -260,7 +259,6 @@ func _atualizar_status_bar():
 			if metas[k] > 0: string_metas += k.left(3) + ": " + str(estoque[k]) + "/" + str(metas[k]) + " | "
 		var status_texto = "PLAY" if not get_tree().paused else "PLANEJAMENTO"
 		
-		# --- VISUALIZAÇÃO DA MADEIRA DE CONSTRUÇÃO NO STATUS ---
 		var madeira_texto = ""
 		if madeira_construcao > 0: madeira_texto = " (Madeira: " + str(madeira_construcao) + ")"
 		
@@ -269,8 +267,6 @@ func _atualizar_status_bar():
 # ==========================================
 # LÓGICA DE JOGO, PROGRESSÃO E ECONOMIA
 # ==========================================
-
-# --- NOVO: LÓGICA DE MULTA AMBIENTAL ---
 func cortar_arvore(pos_tela: Vector2) -> bool:
 	if dinheiro < custo_multa_arvore:
 		if pos_tela != Vector2.ZERO: _spawn_floating_text(pos_tela, "SEM VERBA!", Color.RED)
@@ -283,11 +279,10 @@ func cortar_arvore(pos_tela: Vector2) -> bool:
 		_spawn_floating_text(pos_tela, "MULTA: -$" + str(custo_multa_arvore), Color.RED)
 		_spawn_floating_text(pos_tela + Vector2(0, 25), "+1 MADEIRA (P/ TRILHOS)", Color("#8b5a2b"))
 
-	custo_multa_arvore += 50 # Aumenta a multa para a próxima árvore
+	custo_multa_arvore += 50 
 	_atualizar_status_bar()
 	return true
 
-# --- ATUALIZADO: ABATIMENTO DE CUSTOS COM MADEIRA ---
 func gastar_dinheiro(id_ferramenta, pos_tela: Vector2 = Vector2.ZERO) -> bool:
 	var custo = custos_construcao.get(id_ferramenta, 0)
 	if custo == 0: return true
@@ -295,7 +290,6 @@ func gastar_dinheiro(id_ferramenta, pos_tela: Vector2 = Vector2.ZERO) -> bool:
 	var custo_final = custo
 	var usou_madeira = false
 
-	# Se for trilho ou estrutura, usa a madeira para ganhar $10 de desconto na obra
 	if id_ferramenta in [3, 4, 18, 19, 20, 21, 5, 6, 7, 23, 24, 12, 13, 15, 16] and madeira_construcao > 0:
 		var desconto = 10
 		if custo_final < 10: desconto = custo_final
@@ -420,7 +414,6 @@ func _iniciar_fase(num):
 	tempo_fase = 0.0; tempo_semana = 0.0; semana_atual = 1; receita_semanal = 0
 	dinheiro = 2000 + (num * 500)
 	
-	# Reseta as multas e a madeira ao trocar de fase
 	custo_multa_arvore = 50
 	madeira_construcao = 0
 	
@@ -457,7 +450,7 @@ func _checar_vitoria():
 		popup_vitoria.popup_centered()
 
 # ==========================================
-# MAPA E AStar2D
+# MAPA E AStar2D (AGORA UNIDIRECIONAL)
 # ==========================================
 func _criar_matriz_vazia():
 	matriz_mapa.clear()
@@ -505,18 +498,33 @@ func _reconstruir_malha():
 					if _eh_trilho_ou_estacao(tb) and not trilhos_quebrados.has(Vector2i(nx,ny)): 
 						_tentar_conectar(x,y,ta,nx,ny,tb,d)
 
+# --- ATUALIZADO: CONEXÃO UNIDIRECIONAL E PERMISSÃO DO TILE ---
 func _tentar_conectar(ax, ay, ta, bx, by, tb, d):
-	if not _tem_saida(ta, d) or not _tem_saida(tb, -d): return
-	
 	var t_a = _get_tile_at(ax, ay)
 	var t_b = _get_tile_at(bx, by)
-	if t_a and t_a.has_method("is_direction_closed") and t_a.is_direction_closed(d): return
-	if t_b and t_b.has_method("is_direction_closed") and t_b.is_direction_closed(-d): return
+
+	var pode_ir = true
 	
-	var ida = ax + ay * tamanho_mapa; var idb = bx + by * tamanho_mapa
-	if ta == 6 and d.y != 0: ida += 1000
-	if tb == 6 and d.y != 0: idb += 1000
-	if astar.has_point(ida) and astar.has_point(idb): astar.connect_points(ida, idb, true)
+	if t_a and t_a.has_method("permite_saida"):
+		if not t_a.permite_saida(d): pode_ir = false
+	else:
+		if not _tem_saida(ta, d): pode_ir = false
+
+	if t_b and t_b.has_method("permite_entrada"):
+		if not t_b.permite_entrada(-d): pode_ir = false
+	else:
+		if not _tem_saida(tb, -d): pode_ir = false
+
+	if t_a and t_a.has_method("is_direction_closed") and t_a.is_direction_closed(d): pode_ir = false
+	if t_b and t_b.has_method("is_direction_closed") and t_b.is_direction_closed(-d): pode_ir = false
+	
+	if pode_ir:
+		var ida = ax + ay * tamanho_mapa; var idb = bx + by * tamanho_mapa
+		if ta == 6 and d.y != 0: ida += 1000
+		if tb == 6 and d.y != 0: idb += 1000
+		if astar.has_point(ida) and astar.has_point(idb): 
+			# Passar 'false' é crucial aqui. Isso diz ao AStar que a conexão é estritamente unidirecional (de ida para idb)
+			astar.connect_points(ida, idb, false) 
 
 func _tem_saida(tipo, dir) -> bool:
 	if tipo in [3, 12, 15, 23]: return dir.x != 0
@@ -596,7 +604,8 @@ func _processar_movimento_trens(delta):
 			if tile_atual and tile_atual.estado_atual == 6 and (alvo_grid.y - grid_pos.y) != 0: id_atual += 1000
 			if tile_alvo and tile_alvo.estado_atual == 6 and (alvo_grid.y - grid_pos.y) != 0: id_alvo += 1000
 			
-			if not astar.are_points_connected(id_atual, id_alvo):
+			# Usamos false aqui para forçar a verificação apenas da conexão que vai nesta direção específica
+			if not astar.are_points_connected(id_atual, id_alvo, false):
 				parar_agora = true
 				
 		if not parar_agora and tile_alvo and tile_alvo.estado_atual in [5, 6, 7]:
@@ -615,7 +624,7 @@ func _processar_movimento_trens(delta):
 					if tile_alvo.estado_atual == 6 and (prox_alvo_grid.y - alvo_grid.y) != 0: id_alvo_nav += 1000
 					if tile_prox and tile_prox.estado_atual == 6 and (prox_alvo_grid.y - alvo_grid.y) != 0: id_prox += 1000
 					
-					if not astar.are_points_connected(id_alvo_nav, id_prox):
+					if not astar.are_points_connected(id_alvo_nav, id_prox, false):
 						parar_agora = true
 				
 		if parar_agora:

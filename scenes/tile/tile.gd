@@ -1,4 +1,4 @@
-# tile.gd - Multa Ambiental, Toco de Madeira e Semáforos
+# tile.gd - Sentidos de Via e Símbolos Visuais
 extends ColorRect
 
 # --- VARIÁVEIS DE ESTADO E REFERÊNCIAS ---
@@ -12,6 +12,9 @@ var gm_ref = null
 var index_chave: int = 0
 var arvore_cortada: bool = false
 var semaforo_aberto: bool = true 
+
+# NOVO: 0 = Duplo Sentido, 1 = Sentido Ida, 2 = Sentido Volta
+var sentido_via: int = 0 
 
 var _icon_rect: TextureRect
 var _icon_fantasma: TextureRect
@@ -64,7 +67,7 @@ func get_grid_pos() -> Vector2i:
 	return Vector2i(pos_x, pos_y)
 
 # ==========================================
-# LÓGICA DE INTERAÇÃO (INPUT)
+# LÓGICA DE INTERAÇÃO (INPUT) E SENTIDOS
 # ==========================================
 func _gui_input(event):
 	if event is InputEventMouseButton and event.pressed:
@@ -84,6 +87,11 @@ func _gui_input(event):
 				elif estado_atual in [23, 24]:
 					semaforo_aberto = not semaforo_aberto
 					queue_redraw() 
+				# --- ALTERA O SENTIDO DO TRILHO ---
+				elif estado_atual in [3, 4, 18, 19, 20, 21, 12, 13, 15, 16]:
+					sentido_via = (sentido_via + 1) % 3
+					gm_ref._reconstruir_malha()
+					queue_redraw()
 				return 
 				
 			if gm_ref.estado_selecionado == 0: 
@@ -111,6 +119,34 @@ func is_direction_closed(d: Vector2i) -> bool:
 		var fechado_idx = index_chave % viz.size()
 		if viz[fechado_idx] == d:
 			return true
+	return false
+
+# --- MATEMÁTICA DE ROTAS E SENTIDOS ---
+func _get_ports() -> Array:
+	if estado_atual in [3, 12, 15]: return [Vector2i(-1, 0), Vector2i(1, 0)]
+	if estado_atual in [4, 13, 16]: return [Vector2i(0, -1), Vector2i(0, 1)]
+	if estado_atual == 18: return [Vector2i(0, 1), Vector2i(-1, 0)]
+	if estado_atual == 19: return [Vector2i(-1, 0), Vector2i(0, -1)]
+	if estado_atual == 20: return [Vector2i(0, -1), Vector2i(1, 0)]
+	if estado_atual == 21: return [Vector2i(1, 0), Vector2i(0, 1)]
+	return []
+
+func permite_saida(d: Vector2i) -> bool:
+	if sentido_via == 0: return gm_ref._tem_saida(estado_atual, d)
+	var p = _get_ports()
+	if p.size() < 2: return gm_ref._tem_saida(estado_atual, d)
+	
+	if sentido_via == 1: return d == p[1] # Apenas liberta a saída 2
+	if sentido_via == 2: return d == p[0] # Apenas liberta a saída 1
+	return false
+
+func permite_entrada(port: Vector2i) -> bool:
+	if sentido_via == 0: return gm_ref._tem_saida(estado_atual, port)
+	var p = _get_ports()
+	if p.size() < 2: return gm_ref._tem_saida(estado_atual, port)
+	
+	if sentido_via == 1: return port == p[0] # Apenas aceita via porta 1
+	if sentido_via == 2: return port == p[1] # Apenas aceita via porta 2
 	return false
 
 # ==========================================
@@ -142,20 +178,21 @@ func _apagar_tile():
 		
 	var pos_tela = Vector2(pos_x * 100 + 25, pos_y * 100)
 	
-	# --- NOVO: INVOCA A GESTÃO AMBIENTAL DO GAME MANAGER ---
 	if estado_atual == 9 and not arvore_cortada:
 		if gm_ref.has_method("cortar_arvore"):
 			if gm_ref.cortar_arvore(pos_tela):
 				arvore_cortada = true
 				queue_redraw()
 		return
-	# --------------------------------------------------------
 		
 	if estado_atual != base_bioma:
 		if gm_ref.trilhos_quebrados.has(Vector2i(pos_x, pos_y)): 
 			gm_ref.trilhos_quebrados.erase(Vector2i(pos_x, pos_y))
 		gm_ref.reembolsar_dinheiro(estado_atual, pos_tela)
+		
 		estado_atual = base_bioma
+		sentido_via = 0 # Reinicia a memória de sentido
+		
 		gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual)
 		queue_redraw()
 		
@@ -178,6 +215,7 @@ func _apagar_tile():
 
 func _confirmar_remocao(): 
 	estado_atual = base_bioma
+	sentido_via = 0
 	gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual)
 	
 	var ds = [Vector2i(0,1), Vector2i(0,-1), Vector2i(1,0), Vector2i(-1,0)]
@@ -216,6 +254,8 @@ func _aplicar_estado():
 	if gm_ref.gastar_dinheiro(tool, pos_tela):
 		if estado_atual != base_bioma and estado_atual != 9: 
 			gm_ref.reembolsar_dinheiro(estado_atual, pos_tela + Vector2(0, 20))
+		
+		sentido_via = 0 # Limpa a memória se substituirmos a via
 		estado_atual = tool
 		
 	arvore_cortada = (estado_atual == 9 and arvore_cortada)
@@ -306,18 +346,31 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 		var texto = "CENTRAL" if estado == 17 else "TEM " + gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "N/A")
 		draw_string(font, Vector2(55, 50), texto, HORIZONTAL_ALIGNMENT_CENTER, -1, 16 if estado == 17 else 18, c_white if estado == 17 else c)
 	
-	# --- NOVO VISUAL PARA ÁRVORES E TOCOS ---
 	if estado == 9: 
 		if arvore_cortada: 
-			# Desenha o Tronco/Toco Serrado
 			draw_rect(Rect2(40, 50, 20, 30), Color("#5c3a21", alpha))
-			# Topo do tronco (anéis da madeira)
 			draw_circle(Vector2(50, 50), 10, Color("#d2b48c", alpha))
 		if not arvore_cortada: 
 			draw_colored_polygon(PackedVector2Array([Vector2(50, 15), Vector2(85, 85), Vector2(15, 85)]), Color(0.13, 0.54, 0.13, alpha))
-	# ----------------------------------------
 	
 	if estado == 10: draw_rect(Rect2(25, 35, 50, 30), Color(0.5, 0.5, 0.5, alpha))
+
+	# --- NOVO: SETAS DE SENTIDO ÚNICO ---
+	if estado in [3, 4, 18, 19, 20, 21, 12, 13, 15, 16] and sentido_via != 0:
+		var p = _get_ports()
+		if p.size() == 2:
+			var dir_flow = p[1] - p[0] if sentido_via == 1 else p[0] - p[1]
+			var angle = Vector2(dir_flow.x, dir_flow.y).angle()
+			var centro = Vector2(50, 50)
+			
+			# Desenha Símbolo "Chevron" Triplo
+			var pts = PackedVector2Array([
+				centro + Vector2(-12, -12).rotated(angle),
+				centro + Vector2(12, 0).rotated(angle),
+				centro + Vector2(-12, 12).rotated(angle)
+			])
+			draw_polyline(pts, Color(1, 1, 0, alpha), 6.0, true) # Seta Amarela
+	# ------------------------------------
 
 func _draw():
 	var rect = Rect2(Vector2.ZERO, size)

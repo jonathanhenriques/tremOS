@@ -209,6 +209,8 @@ func _abrir_sub_menu(cat):
 	categoria_atual = cat
 	for n in sub_menu_container.get_children(): n.queue_free()
 	for id in categorias[cat]:
+		if id == 24: continue 
+		
 		var btn = Button.new(); btn.text = nomes_tiles[id]; btn.custom_minimum_size = Vector2(120, 35)
 		btn.pressed.connect(_selecionar_ferramenta.bind(id)); sub_menu_container.add_child(btn)
 
@@ -408,6 +410,14 @@ func _reconstruir_malha():
 
 func _tentar_conectar(ax, ay, ta, bx, by, tb, d):
 	if not _tem_saida(ta, d) or not _tem_saida(tb, -d): return
+	
+	# --- NOVO: CONSULTA À CHAVE PARA BARRAR CONEXÃO DO ASTAR ---
+	var t_a = _get_tile_at(ax, ay)
+	var t_b = _get_tile_at(bx, by)
+	if t_a and t_a.has_method("is_direction_closed") and t_a.is_direction_closed(d): return
+	if t_b and t_b.has_method("is_direction_closed") and t_b.is_direction_closed(-d): return
+	# -----------------------------------------------------------
+	
 	var ida = ax + ay * tamanho_mapa; var idb = bx + by * tamanho_mapa
 	if ta == 6 and d.y != 0: ida += 1000
 	if tb == 6 and d.y != 0: idb += 1000
@@ -436,6 +446,7 @@ func _processar_movimento_trens(delta):
 		var indo = t.get_meta("indo")
 		var carga = t.get_meta("carga")
 
+		# VERIFICAÇÃO DE SEMÁFORO
 		var grid_pos = Vector2i(int(t.position.x / 100), int(t.position.y / 100))
 		var tile = _get_tile_at(grid_pos.x, grid_pos.y)
 		if tile and (tile.estado_atual == 23 or tile.estado_atual == 24):
@@ -443,6 +454,21 @@ func _processar_movimento_trens(delta):
 				continue 
 
 		var alvo = pts[idx]
+		
+		# --- VERIFICAÇÃO FÍSICA PARA CHAVES/TRILHOS QUEBRADOS ---
+		var alvo_grid = Vector2i(int(alvo.x / 100), int(alvo.y / 100))
+		if grid_pos != alvo_grid:
+			var id_atual = grid_pos.x + grid_pos.y * tamanho_mapa
+			var id_alvo = alvo_grid.x + alvo_grid.y * tamanho_mapa
+			
+			if tile and tile.estado_atual == 6 and (alvo_grid.y - grid_pos.y) != 0: id_atual += 1000
+			var tile_alvo = _get_tile_at(alvo_grid.x, alvo_grid.y)
+			if tile_alvo and tile_alvo.estado_atual == 6 and (alvo_grid.y - grid_pos.y) != 0: id_alvo += 1000
+			
+			if not astar.are_points_connected(id_atual, id_alvo):
+				continue # O caminho da frente foi cortado. O trem para fisicamente.
+		# --------------------------------------------------------
+
 		var vel = 250.0 * (verba_trens / 100.0) * (verba_vias / 100.0)
 
 		t.position = t.position.move_toward(alvo, vel * delta)
@@ -475,20 +501,8 @@ func _processar_movimento_trens(delta):
 					_checar_vitoria()
 
 func _verificar_integridade_trens():
-	var ids_para_remover = []
-	for id in trens_ativos.keys():
-		var trem = trens_ativos[id]
-		var origem = trem.get_meta("origem")
-		var destino = trem.get_meta("destino")
-		
-		var path = astar.get_id_path(origem.x + origem.y * tamanho_mapa, destino.x + destino.y * tamanho_mapa)
-		if path.size() < 2:
-			ids_para_remover.append(id)
-	
-	for id in ids_para_remover:
-		if is_instance_valid(trens_ativos[id]):
-			trens_ativos[id].queue_free()
-		trens_ativos.erase(id)
+	# Os trens não somem mais! Eles apenas param na frente da chave fechada ou trilho quebrado.
+	pass
 
 func tentar_lancar_trem():
 	if get_tree().paused == true: return 

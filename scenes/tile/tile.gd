@@ -9,7 +9,7 @@ var pos_x: int = 0
 var pos_y: int = 0
 var gm_ref = null
 
-var chave_aberta: bool = true
+var index_chave: int = 0
 var arvore_cortada: bool = false
 var semaforo_aberto: bool = true 
 
@@ -74,20 +74,17 @@ func _gui_input(event):
 					gm_ref.tentar_lancar_trem()
 					return
 			
-			if gm_ref.estado_selecionado == 1:
+			if gm_ref.estado_selecionado == 1: # MODO SELEÇÃO
 				if gm_ref.trilhos_quebrados.has(Vector2i(pos_x, pos_y)): 
 					gm_ref.consertar_trilho(pos_x, pos_y)
-					return
-				if estado_atual == 7: 
-					chave_aberta = not chave_aberta
+				elif estado_atual == 7: 
+					index_chave += 1
 					gm_ref._reconstruir_malha()
 					queue_redraw()
-					return
-				
-				if estado_atual in [23, 24]:
+				elif estado_atual in [23, 24]:
 					semaforo_aberto = not semaforo_aberto
 					queue_redraw() 
-					return
+				return # <-- Impede que a Seleção tente construir ou apagar
 				
 			if gm_ref.estado_selecionado == 0: 
 				_apagar_tile()
@@ -97,8 +94,25 @@ func _gui_input(event):
 				return
 				
 			_aplicar_estado()
+			
 		if event.button_index == MOUSE_BUTTON_RIGHT: 
-			_apagar_tile()
+			if gm_ref.estado_selecionado != 1: # Protege de apagar se estiver usando a ferramenta de Seleção
+				_apagar_tile()
+
+# Verifica para o GameManager qual perna da Chave está trancada
+func is_direction_closed(d: Vector2i) -> bool:
+	if estado_atual != 7: return false
+	var d_list = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]
+	var viz = []
+	for dir in d_list:
+		var n = gm_ref._get_tile_at(pos_x + dir.x, pos_y + dir.y)
+		if n and gm_ref._eh_trilho_ou_estacao(n.estado_atual): viz.append(dir)
+	
+	if viz.size() > 2:
+		var fechado_idx = index_chave % viz.size()
+		if viz[fechado_idx] == d:
+			return true
+	return false
 
 # ==========================================
 # MÉTODOS DE AÇÃO (CONSTRUÇÃO/DESTRUIÇÃO)
@@ -177,7 +191,6 @@ func _confirmar_remocao():
 	
 	queue_redraw()
 
-# --- NOVO: LÓGICA INTELIGENTE DO SEMÁFORO ---
 func _obter_semaforo_inteligente() -> int:
 	if estado_atual in [4, 13, 16]: return 24
 	if estado_atual in [3, 12, 15]: return 23
@@ -186,7 +199,6 @@ func _obter_semaforo_inteligente() -> int:
 func _aplicar_estado():
 	var tool = gm_ref.estado_selecionado
 	
-	# Transforma o ID 23 no semáforo correto baseado no contexto
 	if tool == 23: tool = _obter_semaforo_inteligente()
 	
 	if estado_atual in [17, 8, 10] or tool == estado_atual: return 
@@ -222,21 +234,40 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 		if estado == 20: p1 = Vector2(50, 0); p2 = Vector2(100, 50)
 		if estado == 21: p1 = Vector2(50, 100); p2 = Vector2(100, 50)
 		draw_polyline_colors(PackedVector2Array([p1, Vector2(50, 50), p2]), [c, c, c], 8.0, true)
-	if estado == 5 or estado == 6:
+	
+	if estado in [5, 6, 7]:
 		var d_list = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]; var viz = []
 		for d in d_list:
 			var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
 			if n and gm_ref._eh_trilho_ou_estacao(n.estado_atual): viz.append(d)
-		if viz.size() == 0: draw_string(font, Vector2(25, 65), "Y" if estado==5 else "H", HORIZONTAL_ALIGNMENT_CENTER, -1, 60, c)
+			
+		if viz.size() == 0: 
+			var txt = "Y"
+			if estado == 6: txt = "H"
+			elif estado == 7: txt = "S"
+			draw_string(font, Vector2(25, 65), txt, HORIZONTAL_ALIGNMENT_CENTER, -1, 60, c)
+			
 		if viz.size() > 0:
-			for d in viz: draw_line(Vector2(50, 50), Vector2(50, 50) + Vector2(d.x, d.y) * 50, c, 8.0)
-			if estado == 5: 
-				draw_circle(Vector2(50, 50), 14.0, c)
-				draw_colored_polygon(PackedVector2Array([Vector2(50, 42), Vector2(58, 56), Vector2(42, 56)]), Color(0.9, 0.7, 0.1, alpha))
-			elif estado == 6:
-				draw_rect(Rect2(38, 38, 24, 24), c)
-				draw_rect(Rect2(42, 42, 16, 16), Color(0.5, 0.5, 0.5, alpha))
-	if estado == 7: draw_rect(rect, Color(0.1, 0.5, 0.1, 0.3 * alpha) if chave_aberta else Color(0.5, 0.1, 0.1, 0.3 * alpha)); draw_string(font, Vector2(35, 60), "S", HORIZONTAL_ALIGNMENT_CENTER, -1, 30, c_white)
+			if estado == 7:
+				var fechado_idx = -1
+				if viz.size() > 2: fechado_idx = index_chave % viz.size()
+				
+				for i in range(viz.size()):
+					var d = viz[i]
+					var line_color = Color(0.8, 0.1, 0.1, alpha) if i == fechado_idx else Color(0.1, 0.8, 0.1, alpha)
+					draw_line(Vector2(50, 50), Vector2(50, 50) + Vector2(d.x, d.y) * 50, line_color, 10.0)
+				
+				draw_circle(Vector2(50, 50), 16.0, c)
+				draw_colored_polygon(PackedVector2Array([Vector2(50, 40), Vector2(60, 56), Vector2(40, 56)]), Color(0.8, 0.8, 0.8, alpha))
+			else:
+				for d in viz: draw_line(Vector2(50, 50), Vector2(50, 50) + Vector2(d.x, d.y) * 50, c, 8.0)
+				if estado == 5: 
+					draw_circle(Vector2(50, 50), 14.0, c)
+					draw_colored_polygon(PackedVector2Array([Vector2(50, 42), Vector2(58, 56), Vector2(42, 56)]), Color(0.9, 0.7, 0.1, alpha))
+				elif estado == 6:
+					draw_rect(Rect2(38, 38, 24, 24), c)
+					draw_rect(Rect2(42, 42, 16, 16), Color(0.5, 0.5, 0.5, alpha))
+	
 	if estado == 23 or estado == 24: 
 		draw_rect(Rect2(40, 15, 20, 15) if estado==23 else Rect2(15, 40, 15, 20), c); draw_circle(Vector2(50, 22) if estado==23 else Vector2(22, 50), 5, Color(0, 1, 0, alpha) if semaforo_aberto else Color(1, 0, 0, alpha))
 	
@@ -282,7 +313,7 @@ func _draw():
 			if sel not in [0, 1]:
 				var prev = sel
 				if sel == 22: prev = gm_ref._prever_pincel_magico(pos_x, pos_y)
-				elif sel == 23: prev = _obter_semaforo_inteligente() # Mostra fantasma correto
+				elif sel == 23: prev = _obter_semaforo_inteligente()
 				
 				if prev != estado_atual: 
 					_desenhar_simbolo(prev, 0.4, _icon_fantasma)

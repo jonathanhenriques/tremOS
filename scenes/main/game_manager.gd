@@ -1,4 +1,4 @@
-# game_manager.gd - Modo Dev e Semáforo Oculto na UI
+# game_manager.gd - Modo Dev, Semáforo Oculto e Freio Antecipado
 extends Node2D
 
 # --- CONFIGURAÇÕES GERAIS E EXPORTS ---
@@ -57,7 +57,6 @@ var estacoes_oferta = {}
 # --- UI LIMPA ---
 var categorias = {"TRILHOS": [22, 7, 23], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8]}
 var nomes_tiles = {0: "BORRACHA", 1: "SELEÇÃO", 2: "TERRA", 3: "TRILHO H", 4: "TRILHO V", 18: "┐ S-O", 19: "┘ N-O", 20: "└ N-L", 21: "┌ S-L", 5: "BIFURC. Y", 6: "CRUZAM. H", 7: "CHAVE", 17: "PRINCIPAL", 8: "ESTAÇÃO", 9: "ÁRVORE", 10: "PEDRA", 11: "ÁGUA", 14: "MONTANHA", 22: "PINCEL MÁGICO", 12: "PONTE H", 13: "PONTE V", 15: "TÚNEL H", 16: "TÚNEL V", 23: "SEMÁFORO", 24: "SEMÁFORO V"}
-
 
 # ==========================================
 # FUNÇÕES LIFECYCLE E UPDATE
@@ -411,12 +410,10 @@ func _reconstruir_malha():
 func _tentar_conectar(ax, ay, ta, bx, by, tb, d):
 	if not _tem_saida(ta, d) or not _tem_saida(tb, -d): return
 	
-	# --- NOVO: CONSULTA À CHAVE PARA BARRAR CONEXÃO DO ASTAR ---
 	var t_a = _get_tile_at(ax, ay)
 	var t_b = _get_tile_at(bx, by)
 	if t_a and t_a.has_method("is_direction_closed") and t_a.is_direction_closed(d): return
 	if t_b and t_b.has_method("is_direction_closed") and t_b.is_direction_closed(-d): return
-	# -----------------------------------------------------------
 	
 	var ida = ax + ay * tamanho_mapa; var idb = bx + by * tamanho_mapa
 	if ta == 6 and d.y != 0: ida += 1000
@@ -436,6 +433,7 @@ func _tem_saida(tipo, dir) -> bool:
 # ==========================================
 # FÍSICA DE TRENS E SPAWN
 # ==========================================
+
 func _processar_movimento_trens(delta):
 	for id in trens_ativos.keys():
 		var t = trens_ativos[id]
@@ -446,28 +444,56 @@ func _processar_movimento_trens(delta):
 		var indo = t.get_meta("indo")
 		var carga = t.get_meta("carga")
 
-		# VERIFICAÇÃO DE SEMÁFORO
 		var grid_pos = Vector2i(int(t.position.x / 100), int(t.position.y / 100))
-		var tile = _get_tile_at(grid_pos.x, grid_pos.y)
-		if tile and (tile.estado_atual == 23 or tile.estado_atual == 24):
-			if not tile.semaforo_aberto:
-				continue 
-
 		var alvo = pts[idx]
-		
-		# --- VERIFICAÇÃO FÍSICA PARA CHAVES/TRILHOS QUEBRADOS ---
 		var alvo_grid = Vector2i(int(alvo.x / 100), int(alvo.y / 100))
-		if grid_pos != alvo_grid:
+		
+		# --- LÓGICA DE FREIO ANTECIPADO E PROTEÇÃO DE CRUZAMENTO ---
+		var parar_agora = false
+		
+		# 1. Checa se o próximo tile que o trem vai entrar é um semáforo fechado
+		var tile_alvo = _get_tile_at(alvo_grid.x, alvo_grid.y)
+		if tile_alvo and tile_alvo.estado_atual in [23, 24] and not tile_alvo.semaforo_aberto:
+			parar_agora = true
+		
+		# 2. Checa se o caminho astar foi quebrado no passo IMEDIATO
+		if grid_pos != alvo_grid and not parar_agora:
 			var id_atual = grid_pos.x + grid_pos.y * tamanho_mapa
 			var id_alvo = alvo_grid.x + alvo_grid.y * tamanho_mapa
 			
-			if tile and tile.estado_atual == 6 and (alvo_grid.y - grid_pos.y) != 0: id_atual += 1000
-			var tile_alvo = _get_tile_at(alvo_grid.x, alvo_grid.y)
+			var tile_atual = _get_tile_at(grid_pos.x, grid_pos.y)
+			if tile_atual and tile_atual.estado_atual == 6 and (alvo_grid.y - grid_pos.y) != 0: id_atual += 1000
 			if tile_alvo and tile_alvo.estado_atual == 6 and (alvo_grid.y - grid_pos.y) != 0: id_alvo += 1000
 			
 			if not astar.are_points_connected(id_atual, id_alvo):
-				continue # O caminho da frente foi cortado. O trem para fisicamente.
-		# --------------------------------------------------------
+				parar_agora = true
+				
+		# 3. NOVO: "Não bloqueie o cruzamento" (Look-ahead duplo)
+		# Se o alvo for uma chave ou cruzamento, o trem só entra se a SAÍDA dela também estiver livre!
+		if not parar_agora and tile_alvo and tile_alvo.estado_atual in [5, 6, 7]:
+			var next_idx = idx + 1 if indo else idx - 1
+			if next_idx >= 0 and next_idx < pts.size():
+				var prox_alvo = pts[next_idx]
+				var prox_alvo_grid = Vector2i(int(prox_alvo.x / 100), int(prox_alvo.y / 100))
+				
+				var tile_prox = _get_tile_at(prox_alvo_grid.x, prox_alvo_grid.y)
+				if tile_prox and tile_prox.estado_atual in [23, 24] and not tile_prox.semaforo_aberto:
+					parar_agora = true
+				else:
+					var id_alvo_nav = alvo_grid.x + alvo_grid.y * tamanho_mapa
+					var id_prox = prox_alvo_grid.x + prox_alvo_grid.y * tamanho_mapa
+					
+					if tile_alvo.estado_atual == 6 and (prox_alvo_grid.y - alvo_grid.y) != 0: id_alvo_nav += 1000
+					if tile_prox and tile_prox.estado_atual == 6 and (prox_alvo_grid.y - alvo_grid.y) != 0: id_prox += 1000
+					
+					if not astar.are_points_connected(id_alvo_nav, id_prox):
+						parar_agora = true
+				
+		# Aplica o freio com o dobro da distância anterior (para antes de invadir o tile da chave)
+		if parar_agora:
+			if t.position.distance_to(alvo) <= 80.0: 
+				continue 
+		# -----------------------------------------------------
 
 		var vel = 250.0 * (verba_trens / 100.0) * (verba_vias / 100.0)
 
@@ -499,10 +525,12 @@ func _processar_movimento_trens(delta):
 					_spawn_floating_text(t.position, "+ $" + str(recompensas[carga]), Color.GREEN)
 					_atualizar_status_bar()
 					_checar_vitoria()
+					
+					
+					
 
 func _verificar_integridade_trens():
-	# Os trens não somem mais! Eles apenas param na frente da chave fechada ou trilho quebrado.
-	pass
+	pass # O trem aguarda pacientemente bloqueios físicos.
 
 func tentar_lancar_trem():
 	if get_tree().paused == true: return 
@@ -624,7 +652,7 @@ func aplicar_pincel_magico(x, y):
 	ultima_pos_pincel = Vector2i(x, y)
 
 # ==========================================
-# GERAÇÃO DE NÍVEIS
+# GERAÇÃO DE NÍVEIS E ESTAÇÕES
 # ==========================================
 func _get_tile_at(x, y):
 	for t in mapa_node.get_children(): if t.has_method("get_grid_pos") and t.get_grid_pos() == Vector2i(x, y): return t

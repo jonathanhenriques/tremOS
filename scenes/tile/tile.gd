@@ -1,4 +1,4 @@
-# tile.gd - Proteção Dinâmica, Modo Dev, Borracha Fluida e Semáforo Inteligente
+# tile.gd - Proteção Dinâmica, Modo Dev, Borracha Fluida e Estações Auto-Orientadas
 extends ColorRect
 
 # --- VARIÁVEIS DE ESTADO E REFERÊNCIAS ---
@@ -64,7 +64,7 @@ func get_grid_pos() -> Vector2i:
 	return Vector2i(pos_x, pos_y)
 
 # ==========================================
-# LÓGICA DE INTERAÇÃO (INPUT)
+# LÓGICA DE INTERAÇÃO E CHAVES
 # ==========================================
 func _gui_input(event):
 	if event is InputEventMouseButton and event.pressed:
@@ -74,7 +74,7 @@ func _gui_input(event):
 					gm_ref.tentar_lancar_trem()
 					return
 			
-			if gm_ref.estado_selecionado == 1: # MODO SELEÇÃO
+			if gm_ref.estado_selecionado == 1: 
 				if gm_ref.trilhos_quebrados.has(Vector2i(pos_x, pos_y)): 
 					gm_ref.consertar_trilho(pos_x, pos_y)
 				elif estado_atual == 7: 
@@ -84,7 +84,7 @@ func _gui_input(event):
 				elif estado_atual in [23, 24]:
 					semaforo_aberto = not semaforo_aberto
 					queue_redraw() 
-				return # <-- Impede que a Seleção tente construir ou apagar
+				return 
 				
 			if gm_ref.estado_selecionado == 0: 
 				_apagar_tile()
@@ -96,10 +96,9 @@ func _gui_input(event):
 			_aplicar_estado()
 			
 		if event.button_index == MOUSE_BUTTON_RIGHT: 
-			if gm_ref.estado_selecionado != 1: # Protege de apagar se estiver usando a ferramenta de Seleção
+			if gm_ref.estado_selecionado != 1: 
 				_apagar_tile()
 
-# Verifica para o GameManager qual perna da Chave está trancada
 func is_direction_closed(d: Vector2i) -> bool:
 	if estado_atual != 7: return false
 	var d_list = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]
@@ -115,7 +114,7 @@ func is_direction_closed(d: Vector2i) -> bool:
 	return false
 
 # ==========================================
-# MÉTODOS DE AÇÃO (CONSTRUÇÃO/DESTRUIÇÃO)
+# MÉTODOS DE AÇÃO (CONSTRUÇÃO E BORRACHA)
 # ==========================================
 func _update_brush():
 	gm_ref.aplicar_pincel_magico(pos_x, pos_y)
@@ -219,6 +218,13 @@ func _aplicar_estado():
 	arvore_cortada = (estado_atual == 9 and arvore_cortada)
 	gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual)
 	queue_redraw()
+	
+	# Força as estações vizinhas a se re-orientarem
+	var ds = [Vector2i(0,1), Vector2i(0,-1), Vector2i(1,0), Vector2i(-1,0)]
+	for d in ds:
+		var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
+		if n and n.estado_atual in [17, 8]:
+			n.queue_redraw()
 
 # ==========================================
 # VISUAL E DESENHO
@@ -271,19 +277,35 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 	if estado == 23 or estado == 24: 
 		draw_rect(Rect2(40, 15, 20, 15) if estado==23 else Rect2(15, 40, 15, 20), c); draw_circle(Vector2(50, 22) if estado==23 else Vector2(22, 50), 5, Color(0, 1, 0, alpha) if semaforo_aberto else Color(1, 0, 0, alpha))
 	
-	if estado == 17: 
+	# --- ESTAÇÕES AUTO-ORIENTADAS ---
+	if estado in [17, 8]: 
+		var dir_conexao = Vector2i(0, 1) # Padrão: plataforma para baixo
+		var d_list = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]
+		for d in d_list:
+			var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
+			if n and gm_ref._eh_trilho_ou_estacao(n.estado_atual):
+				dir_conexao = d
+				break
+		
+		# Define o lado onde a plataforma será desenhada
+		var plat_rect = Rect2(-5, 95, 110, 20)
+		if dir_conexao == Vector2i(0, -1): plat_rect = Rect2(-5, -15, 110, 20) # Cima
+		elif dir_conexao == Vector2i(0, 1): plat_rect = Rect2(-5, 95, 110, 20) # Baixo
+		elif dir_conexao == Vector2i(-1, 0): plat_rect = Rect2(-15, -5, 20, 110) # Esquerda
+		elif dir_conexao == Vector2i(1, 0): plat_rect = Rect2(95, -5, 20, 110) # Direita
+
+		var cor_base = Color(1, 0, 1, alpha) if estado == 17 else Color(1, 0.84, 0, alpha)
 		var rect_gigante = Rect2(-5, -5, 110, 110)
-		draw_rect(rect_gigante, Color(1, 0, 1, alpha))
-		draw_rect(Rect2(5, 5, 90, 90), c_white, false, 5.0)
-		draw_rect(Rect2(-5, 95, 110, 20), Color(0, 0, 0, alpha)) 
-		draw_rect(Rect2(-5, 95, 110, 20), c_white, false, 3.0)   
-		draw_string(font, Vector2(55, 50), "CENTRAL", HORIZONTAL_ALIGNMENT_CENTER, -1, 16, c_white)
-	if estado == 8: 
-		var rect_gigante = Rect2(-5, -5, 110, 110)
-		draw_rect(rect_gigante, Color(1, 0.84, 0, alpha))
-		draw_rect(Rect2(-5, 95, 110, 20), Color(0, 0, 0, alpha)) 
-		draw_rect(Rect2(-5, 95, 110, 20), c_white, false, 3.0)   
-		draw_string(font, Vector2(55, 50), "TEM " + gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "N/A"), HORIZONTAL_ALIGNMENT_CENTER, -1, 18, c)
+		
+		draw_rect(rect_gigante, cor_base)
+		if estado == 17: draw_rect(Rect2(5, 5, 90, 90), c_white, false, 5.0)
+		
+		draw_rect(plat_rect, Color(0, 0, 0, alpha)) 
+		draw_rect(plat_rect, c_white, false, 3.0)   
+		
+		var texto = "CENTRAL" if estado == 17 else "TEM " + gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "N/A")
+		draw_string(font, Vector2(55, 50), texto, HORIZONTAL_ALIGNMENT_CENTER, -1, 16 if estado == 17 else 18, c_white if estado == 17 else c)
+	# --------------------------------
 	
 	if estado == 9: 
 		if arvore_cortada: draw_circle(Vector2(50, 50), 25, Color(0.82, 0.7, 0.55, alpha))

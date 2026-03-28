@@ -1,4 +1,4 @@
-# game_manager.gd - Física de Trens em Tempo Real e Semáforos
+# game_manager.gd - O Pincel Definitivo e Limpeza de UI
 extends Node2D
 
 @export var tamanho_mapa: int = 20
@@ -7,7 +7,7 @@ extends Node2D
 
 var tile_scene = preload("res://scenes/tile/tile.tscn")
 var matriz_mapa = []
-var estado_selecionado = 3 
+var estado_selecionado = 22 # Agora o jogo começa direto no Pincel Mágico
 var astar = AStar2D.new()
 var trens_ativos = {}
 var info_label: Label
@@ -45,7 +45,8 @@ var cores_carga = {"LEITE": Color.WHITE, "MADEIRA": Color("#8b5a2b"), "TRIGO": C
 var custos_construcao = {3: 10, 4: 10, 18: 15, 19: 15, 20: 15, 21: 15, 5: 30, 6: 40, 7: 50, 12: 100, 13: 100, 15: 150, 16: 150, 23: 50, 24: 50}
 var estacoes_oferta = {} 
 
-var categorias = {"TRILHOS": [22, 3, 4, 18, 19, 20, 21, 5, 6, 7, 23, 24], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8, 12, 13, 15, 16]}
+# --- UI LIMPA (APOSENTADORIA DOS BOTÕES MANUAIS) ---
+var categorias = {"TRILHOS": [22, 7, 23, 24], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8]}
 var nomes_tiles = {0: "BORRACHA", 1: "SELEÇÃO", 2: "TERRA", 3: "TRILHO H", 4: "TRILHO V", 18: "┐ S-O", 19: "┘ N-O", 20: "└ N-L", 21: "┌ S-L", 5: "BIFURC. Y", 6: "CRUZAM. H", 7: "CHAVE", 17: "PRINCIPAL", 8: "ESTAÇÃO", 9: "ÁRVORE", 10: "PEDRA", 11: "ÁGUA", 14: "MONTANHA", 22: "PINCEL MÁGICO", 12: "PONTE H", 13: "PONTE V", 15: "TÚNEL H", 16: "TÚNEL V", 23: "SEMÁFORO H", 24: "SEMÁFORO V"}
 
 @onready var mapa_node = $"../Mapa"
@@ -67,7 +68,6 @@ func _process(delta):
 			if tempo_semana >= duracao_semana:
 				_gerar_relatorio_semanal()
 			
-			# NOVA FÍSICA FRAME A FRAME
 			_processar_movimento_trens(delta)
 			
 		_atualizar_status_bar()
@@ -200,11 +200,13 @@ func _atualizar_status_bar():
 func gastar_dinheiro(id_ferramenta, pos_tela: Vector2 = Vector2.ZERO) -> bool:
 	var custo = custos_construcao.get(id_ferramenta, 0)
 	if custo == 0: return true
+	if dinheiro < custo: return false
 	dinheiro -= custo; _atualizar_status_bar()
 	if pos_tela != Vector2.ZERO: _spawn_floating_text(pos_tela, "- $" + str(custo), Color.RED)
 	return true
 
 func gastar_dinheiro_especifico(valor: int, pos_tela: Vector2) -> bool:
+	if dinheiro < valor: return false
 	dinheiro -= valor; _atualizar_status_bar()
 	if pos_tela != Vector2.ZERO: _spawn_floating_text(pos_tela, "- $" + str(valor), Color.RED)
 	return true
@@ -359,8 +361,6 @@ func _reconstruir_malha():
 			var tipo = matriz_mapa[x][y]
 			if not _eh_trilho_ou_estacao(tipo): continue
 			
-			# REMOVIDO o bloqueio físico por Chave/Semáforo no AStar.
-			# Agora o AStar sempre conhece o caminho, e o bloqueio é feito apenas no Movimento!
 			if trilhos_quebrados.has(Vector2i(x,y)): continue 
 			
 			astar.add_point(x + y * tamanho_mapa, Vector2(x, y))
@@ -396,7 +396,7 @@ func _tem_saida(tipo, dir) -> bool:
 	if tipo in [5, 6, 7, 8, 17]: return true
 	return false
 
-# --- NOVO: FÍSICA E MOVIMENTO FRAME A FRAME ---
+# --- FÍSICA E MOVIMENTO FRAME A FRAME ---
 func _processar_movimento_trens(delta):
 	for id in trens_ativos.keys():
 		var t = trens_ativos[id]
@@ -426,19 +426,19 @@ func _processar_movimento_trens(delta):
 			t.rotation = prev_pos.angle_to_point(t.position)
 			t.set_meta("prev_pos", t.position)
 
-		# Se chegou no ponto alvo (Estação ou Curva intermediária)
+		# Se chegou no ponto alvo
 		if t.position.distance_to(alvo) < 1.0:
 			if indo:
 				if idx < pts.size() - 1:
 					t.set_meta("indice_alvo", idx + 1)
-				else: # Chegou na estação de coleta
+				else: 
 					t.set_meta("indo", false)
 					if pts.size() > 1: t.set_meta("indice_alvo", idx - 1)
 					t.get_node("Vagao").color = cores_carga[carga]
 			else:
 				if idx > 0:
 					t.set_meta("indice_alvo", idx - 1)
-				else: # Voltou pra Central
+				else: 
 					t.set_meta("indo", true)
 					if pts.size() > 1: t.set_meta("indice_alvo", 1)
 					t.get_node("Vagao").color = Color(0.3, 0.3, 0.3)
@@ -456,7 +456,6 @@ func _verificar_integridade_trens():
 		var origem = trem.get_meta("origem")
 		var destino = trem.get_meta("destino")
 		
-		# O único momento em que o trem morre agora é se o trilho debaixo dele for apagado (ou quebrado por desastre)
 		var path = astar.get_id_path(origem.x + origem.y * tamanho_mapa, destino.x + destino.y * tamanho_mapa)
 		if path.size() < 2:
 			ids_para_remover.append(id)
@@ -474,6 +473,7 @@ func tentar_lancar_trem():
 			if matriz_mapa[x][y] == 17: principal = Vector2i(x, y)
 			if matriz_mapa[x][y] == 8: alvos.append(Vector2i(x, y))
 	if principal == Vector2i(-1, -1): return
+	
 	for d in alvos:
 		var p_ids = astar.get_id_path(principal.x + principal.y*tamanho_mapa, d.x + d.y*tamanho_mapa)
 		if p_ids.size() > 1:
@@ -492,7 +492,6 @@ func _spawnar_trem(pontos, id, carga, o, d):
 	vag.position = Vector2(-75, -15) 
 	t.add_child(vag)
 	
-	# Salvando Dados Lógicos
 	t.set_meta("origem", o)
 	t.set_meta("destino", d)
 	t.set_meta("carga", carga)
@@ -507,8 +506,12 @@ func _spawnar_trem(pontos, id, carga, o, d):
 	t.set_meta("prev_pos", pos_inicial)
 	t.position = pos_inicial
 
-# --- PINCEL MÁGICO INTELIGENTE E AUTO-TILER ---
+# --- O PINCEL DEFINITIVO (AUTO-TILER COM BIOMAS) ---
 func _prever_pincel_magico(x, y) -> int:
+	var t = _get_tile_at(x, y)
+	var bioma = 2
+	if t: bioma = t.base_bioma
+	
 	var dirs = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]
 	var v = []
 	for d in dirs:
@@ -534,11 +537,25 @@ func _prever_pincel_magico(x, y) -> int:
 	elif v.size() == 1:
 		if v[0].x != 0: tipo = 3
 		else: tipo = 4
+	
+	# Adaptação Inteligente para Pontes e Túneis
+	if bioma == 11: 
+		tipo = 12 if (tipo == 3 or tipo in [18,19,20,21,5,6]) else 13
+	elif bioma == 14: 
+		tipo = 15 if (tipo == 3 or tipo in [18,19,20,21,5,6]) else 16
+
 	return tipo
 
 func aplicar_pincel_magico(x, y):
 	if x < 0 or x >= tamanho_mapa or y < 0 or y >= tamanho_mapa: return
-	if matriz_mapa[x][y] in [17, 8, 10]: return
+	
+	# Proteção: O pincel não sobrescreve a central, estações, pedras, chaves ou semáforos
+	if matriz_mapa[x][y] in [17, 8, 10, 7, 23, 24]: return 
+	
+	var t = _get_tile_at(x, y)
+	# Proteção: O pincel não corta árvore sozinho. O jogador deve usar a borracha antes!
+	if t and t.estado_atual == 9 and not t.arvore_cortada: return 
+	
 	var tipo = _prever_pincel_magico(x, y)
 	
 	if matriz_mapa[x][y] != tipo:
@@ -547,7 +564,6 @@ func aplicar_pincel_magico(x, y):
 		if gastar_dinheiro(tipo, pos_tela):
 			if tile_antigo not in [2, 11, 14, 9, 10]: reembolsar_dinheiro(tile_antigo, pos_tela)
 			matriz_mapa[x][y] = tipo
-			var t=_get_tile_at(x,y)
 			if t: 
 				t.estado_atual=tipo
 				t.queue_redraw()
@@ -558,7 +574,8 @@ func aplicar_pincel_magico(x, y):
 		var ny = y + d.y
 		if nx >= 0 and nx < tamanho_mapa and ny >= 0 and ny < tamanho_mapa:
 			var tipo_vizinho = matriz_mapa[nx][ny]
-			if tipo_vizinho in [3, 4, 18, 19, 20, 21, 5, 6]:
+			# O Auto-Tiler agora atinge trilhos normais, pontes e túneis
+			if tipo_vizinho in [3, 4, 18, 19, 20, 21, 5, 6, 12, 13, 15, 16]:
 				var novo_tipo = _prever_pincel_magico(nx, ny)
 				if tipo_vizinho != novo_tipo:
 					matriz_mapa[nx][ny] = novo_tipo

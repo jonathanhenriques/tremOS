@@ -1,4 +1,4 @@
-# game_manager.gd - Sistema de Lastro e Velocidade Dinâmica
+# game_manager.gd - Física de Trens em Tempo Real e Semáforos
 extends Node2D
 
 @export var tamanho_mapa: int = 20
@@ -18,10 +18,9 @@ var popup_vitoria: ConfirmationDialog
 var popup_relatorio: AcceptDialog 
 var popup_orcamento: AcceptDialog
 
-# --- VARIÁVEL DO PINCEL INTELIGENTE ---
+var popup_game_over: ConfirmationDialog
+var jogo_perdido: bool = false
 var ultima_pos_pincel: Vector2i = Vector2i(-1, -1)
-
-# Variável para o Botão de Pause
 var botao_pause: Button
 
 # --- ORÇAMENTO E DESASTRES ---
@@ -46,9 +45,6 @@ var cores_carga = {"LEITE": Color.WHITE, "MADEIRA": Color("#8b5a2b"), "TRIGO": C
 var custos_construcao = {3: 10, 4: 10, 18: 15, 19: 15, 20: 15, 21: 15, 5: 30, 6: 40, 7: 50, 12: 100, 13: 100, 15: 150, 16: 150, 23: 50, 24: 50}
 var estacoes_oferta = {} 
 
-var popup_game_over: ConfirmationDialog
-var jogo_perdido: bool = false
-
 var categorias = {"TRILHOS": [22, 3, 4, 18, 19, 20, 21, 5, 6, 7, 23, 24], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8, 12, 13, 15, 16]}
 var nomes_tiles = {0: "BORRACHA", 1: "SELEÇÃO", 2: "TERRA", 3: "TRILHO H", 4: "TRILHO V", 18: "┐ S-O", 19: "┘ N-O", 20: "└ N-L", 21: "┌ S-L", 5: "BIFURC. Y", 6: "CRUZAM. H", 7: "CHAVE", 17: "PRINCIPAL", 8: "ESTAÇÃO", 9: "ÁRVORE", 10: "PEDRA", 11: "ÁGUA", 14: "MONTANHA", 22: "PINCEL MÁGICO", 12: "PONTE H", 13: "PONTE V", 15: "TÚNEL H", 16: "TÚNEL V", 23: "SEMÁFORO H", 24: "SEMÁFORO V"}
 
@@ -64,29 +60,22 @@ func _ready():
 	_iniciar_fase(1) 
 
 func _process(delta):
-	if not fase_concluida:
+	if not fase_concluida and not jogo_perdido:
 		if not get_tree().paused:
 			tempo_fase += delta
 			tempo_semana += delta
 			if tempo_semana >= duracao_semana:
 				_gerar_relatorio_semanal()
+			
+			# NOVA FÍSICA FRAME A FRAME
+			_processar_movimento_trens(delta)
+			
 		_atualizar_status_bar()
 		
-	# Limpa a memória direcional do pincel quando o usuário solta o clique
 	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		ultima_pos_pincel = Vector2i(-1, -1)
-		
-	# --- LÓGICA DE ROTAÇÃO DOS TRENS ---
-	# Faz o trem sempre "olhar" para onde está indo, garantindo que o vagão fique atrás
-	for id in trens_ativos.keys():
-		var t = trens_ativos[id]
-		if is_instance_valid(t):
-			var prev_pos = t.get_meta("prev_pos", t.position)
-			if t.position.distance_squared_to(prev_pos) > 1.0: # Se ele se moveu
-				t.rotation = prev_pos.angle_to_point(t.position)
-				t.set_meta("prev_pos", t.position)
 
-
+# --- SISTEMA DE DIÁLOGOS E UI ---
 func _setup_dialogos():
 	popup_confirmacao = ConfirmationDialog.new(); add_child(popup_confirmacao)
 	popup_confirmacao.title = "Aviso de Engenharia"; popup_confirmacao.dialog_text = "Deseja remover esta estação?"
@@ -104,7 +93,6 @@ func _setup_dialogos():
 	popup_relatorio.confirmed.connect(_iniciar_nova_semana)
 	popup_relatorio.process_mode = Node.PROCESS_MODE_ALWAYS
 	
-	# --- TELA DE COLISÃO (RESTAURADA) ---
 	popup_game_over = ConfirmationDialog.new()
 	add_child(popup_game_over)
 	popup_game_over.title = "💥 COLISÃO FERROVIÁRIA! 💥"
@@ -121,12 +109,8 @@ func _setup_dialogos():
 	
 	popup_game_over.confirmed.connect(func(): _iniciar_fase(nivel_atual))
 	popup_game_over.canceled.connect(func(): get_tree().quit())
-	# ------------------------------------
 	
 	_construir_painel_orcamento()
-
-
-
 
 func _construir_painel_orcamento():
 	popup_orcamento = AcceptDialog.new(); add_child(popup_orcamento)
@@ -150,6 +134,110 @@ func _construir_painel_orcamento():
 	slider_trens.value_changed.connect(func(v): verba_trens = v; val_trens.text = "Verba: " + str(v) + "%")
 	
 	popup_orcamento.confirmed.connect(func(): if not get_tree().paused: Engine.time_scale = velocidade_jogo)
+
+func _criar_ui_sistema_soko():
+	var canvas = CanvasLayer.new(); add_child(canvas)
+	canvas.process_mode = Node.PROCESS_MODE_ALWAYS
+	
+	var topo = Panel.new(); topo.custom_minimum_size = Vector2(0, 90); topo.set_anchors_preset(Control.PRESET_TOP_WIDE); canvas.add_child(topo)
+	info_label = Label.new(); topo.add_child(info_label); info_label.position = Vector2(160, 5)
+	
+	var btn_orc = Button.new(); btn_orc.text = "ORÇAMENTO"; btn_orc.position = Vector2(20, 5); btn_orc.custom_minimum_size = Vector2(120, 30)
+	btn_orc.add_theme_color_override("font_color", Color.YELLOW)
+	btn_orc.pressed.connect(func(): popup_orcamento.popup_centered())
+	topo.add_child(btn_orc)
+	
+	botao_pause = Button.new(); botao_pause.text = "PAUSE"; botao_pause.position = Vector2(20, 45); botao_pause.custom_minimum_size = Vector2(120, 35)
+	botao_pause.pressed.connect(_alternar_pause)
+	topo.add_child(botao_pause)
+	
+	var scroll = ScrollContainer.new(); scroll.custom_minimum_size = Vector2(850, 60); scroll.position = Vector2(160, 30); topo.add_child(scroll)
+	sub_menu_container = HBoxContainer.new(); scroll.add_child(sub_menu_container)
+	var lateral = PanelContainer.new(); lateral.custom_minimum_size = Vector2(130, 0); lateral.set_anchors_preset(Control.PRESET_LEFT_WIDE); lateral.offset_top = 95; canvas.add_child(lateral)
+	
+	var vbox = VBoxContainer.new(); lateral.add_child(vbox)
+	
+	for n in ["BORRACHA", "SELEÇÃO"]:
+		var b = Button.new(); b.text = n; b.custom_minimum_size = Vector2(110, 45); vbox.add_child(b)
+		b.pressed.connect(_selecionar_ferramenta.bind(0 if n=="BORRACHA" else 1))
+	for cat in categorias.keys():
+		var btn = Button.new(); btn.text = cat; btn.custom_minimum_size = Vector2(110, 45); btn.pressed.connect(_abrir_sub_menu.bind(cat)); vbox.add_child(btn)
+	_abrir_sub_menu("TRILHOS")
+
+func _alternar_pause():
+	if get_tree().paused == true:
+		get_tree().paused = false
+		botao_pause.text = "PAUSE"
+		botao_pause.add_theme_color_override("font_color", Color.WHITE)
+	else:
+		get_tree().paused = true
+		botao_pause.text = "CONTINUAR"
+		botao_pause.add_theme_color_override("font_color", Color.GREEN)
+
+func _abrir_sub_menu(cat):
+	categoria_atual = cat
+	for n in sub_menu_container.get_children(): n.queue_free()
+	for id in categorias[cat]:
+		var btn = Button.new(); btn.text = nomes_tiles[id]; btn.custom_minimum_size = Vector2(120, 35)
+		btn.pressed.connect(_selecionar_ferramenta.bind(id)); sub_menu_container.add_child(btn)
+
+func _selecionar_ferramenta(id):
+	estado_selecionado = id; _atualizar_status_bar()
+
+func _get_tempo_formatado() -> String:
+	var minutos = int(tempo_fase / 60); var segundos = int(tempo_fase) % 60
+	return "%02d:%02d" % [minutos, segundos]
+
+func _atualizar_status_bar():
+	if info_label: 
+		var string_metas = ""
+		for k in metas.keys():
+			if metas[k] > 0: string_metas += k.left(3) + ": " + str(estoque[k]) + "/" + str(metas[k]) + " | "
+		var status_texto = "PLAY" if not get_tree().paused else "PLANEJAMENTO"
+		info_label.text = "[%s] T: %s | $ %d | FASE %d | ATIVO: %s | %s" % [status_texto, _get_tempo_formatado(), dinheiro, nivel_atual, nomes_tiles[estado_selecionado], string_metas]
+
+# --- LÓGICA DE JOGO E ECONOMIA ---
+func gastar_dinheiro(id_ferramenta, pos_tela: Vector2 = Vector2.ZERO) -> bool:
+	var custo = custos_construcao.get(id_ferramenta, 0)
+	if custo == 0: return true
+	dinheiro -= custo; _atualizar_status_bar()
+	if pos_tela != Vector2.ZERO: _spawn_floating_text(pos_tela, "- $" + str(custo), Color.RED)
+	return true
+
+func gastar_dinheiro_especifico(valor: int, pos_tela: Vector2) -> bool:
+	dinheiro -= valor; _atualizar_status_bar()
+	if pos_tela != Vector2.ZERO: _spawn_floating_text(pos_tela, "- $" + str(valor), Color.RED)
+	return true
+
+func reembolsar_dinheiro(id_ferramenta, pos_tela: Vector2):
+	var valor = custos_construcao.get(id_ferramenta, 0)
+	if valor > 0:
+		dinheiro += valor; _atualizar_status_bar()
+		if pos_tela != Vector2.ZERO: _spawn_floating_text(pos_tela, "+ $" + str(valor), Color.GREEN)
+
+func _spawn_floating_text(pos: Vector2, txt: String, col: Color):
+	var l = Label.new(); l.text = txt; l.add_theme_color_override("font_color", col); l.add_theme_font_size_override("font_size", 22)
+	l.position = pos + Vector2(randf_range(-15, 15), randf_range(-15, 15)); l.z_index = 50; add_child(l)
+	l.process_mode = Node.PROCESS_MODE_ALWAYS
+	var tw = create_tween()
+	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS) 
+	tw.tween_property(l, "position", l.position + Vector2(0,-60), 1.0)
+	tw.parallel().tween_property(l, "modulate:a", 0.0, 1.0)
+	tw.tween_callback(l.queue_free)
+
+func _input(event):
+	if event.is_action_pressed("ui_cancel") or (event is InputEventKey and event.pressed and event.keycode == KEY_P):
+		_alternar_pause()
+
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+			if get_viewport().get_mouse_position().x > 130:
+				var lista = categorias.get(categoria_atual, [])
+				if lista.size() > 1 and estado_selecionado in lista:
+					var idx = lista.find(estado_selecionado)
+					if event.button_index == MOUSE_BUTTON_WHEEL_UP: idx = (idx - 1 + lista.size()) % lista.size()
+					if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: idx = (idx + 1) % lista.size()
+					_selecionar_ferramenta(lista[idx]); get_viewport().set_input_as_handled()
 
 func _avancar_fase():
 	nivel_atual += 1
@@ -241,109 +329,7 @@ func _iniciar_fase(num):
 	if num == 3: _gerar_mapa_nivel_3()
 	_atualizar_status_bar()
 
-func _criar_ui_sistema_soko():
-	var canvas = CanvasLayer.new(); add_child(canvas)
-	canvas.process_mode = Node.PROCESS_MODE_ALWAYS
-	
-	var topo = Panel.new(); topo.custom_minimum_size = Vector2(0, 90); topo.set_anchors_preset(Control.PRESET_TOP_WIDE); canvas.add_child(topo)
-	info_label = Label.new(); topo.add_child(info_label); info_label.position = Vector2(160, 5)
-	
-	var btn_orc = Button.new(); btn_orc.text = "ORÇAMENTO"; btn_orc.position = Vector2(20, 5); btn_orc.custom_minimum_size = Vector2(120, 30)
-	btn_orc.add_theme_color_override("font_color", Color.YELLOW)
-	btn_orc.pressed.connect(func(): popup_orcamento.popup_centered())
-	topo.add_child(btn_orc)
-	
-	botao_pause = Button.new(); botao_pause.text = "PAUSE"; botao_pause.position = Vector2(20, 45); botao_pause.custom_minimum_size = Vector2(120, 35)
-	botao_pause.pressed.connect(_alternar_pause)
-	topo.add_child(botao_pause)
-	
-	var scroll = ScrollContainer.new(); scroll.custom_minimum_size = Vector2(850, 60); scroll.position = Vector2(160, 30); topo.add_child(scroll)
-	sub_menu_container = HBoxContainer.new(); scroll.add_child(sub_menu_container)
-	var lateral = PanelContainer.new(); lateral.custom_minimum_size = Vector2(130, 0); lateral.set_anchors_preset(Control.PRESET_LEFT_WIDE); lateral.offset_top = 95; canvas.add_child(lateral)
-	
-	var vbox = VBoxContainer.new(); lateral.add_child(vbox)
-	
-	for n in ["BORRACHA", "SELEÇÃO"]:
-		var b = Button.new(); b.text = n; b.custom_minimum_size = Vector2(110, 45); vbox.add_child(b)
-		b.pressed.connect(_selecionar_ferramenta.bind(0 if n=="BORRACHA" else 1))
-	for cat in categorias.keys():
-		var btn = Button.new(); btn.text = cat; btn.custom_minimum_size = Vector2(110, 45); btn.pressed.connect(_abrir_sub_menu.bind(cat)); vbox.add_child(btn)
-	_abrir_sub_menu("TRILHOS")
-
-func _alternar_pause():
-	if get_tree().paused == true:
-		get_tree().paused = false
-		botao_pause.text = "PAUSE"
-		botao_pause.add_theme_color_override("font_color", Color.WHITE)
-	else:
-		get_tree().paused = true
-		botao_pause.text = "CONTINUAR"
-		botao_pause.add_theme_color_override("font_color", Color.GREEN)
-
-func _abrir_sub_menu(cat):
-	categoria_atual = cat
-	for n in sub_menu_container.get_children(): n.queue_free()
-	for id in categorias[cat]:
-		var btn = Button.new(); btn.text = nomes_tiles[id]; btn.custom_minimum_size = Vector2(120, 35)
-		btn.pressed.connect(_selecionar_ferramenta.bind(id)); sub_menu_container.add_child(btn)
-
-func _selecionar_ferramenta(id):
-	estado_selecionado = id; _atualizar_status_bar()
-
-func _get_tempo_formatado() -> String:
-	var minutos = int(tempo_fase / 60); var segundos = int(tempo_fase) % 60
-	return "%02d:%02d" % [minutos, segundos]
-
-func _atualizar_status_bar():
-	if info_label: 
-		var string_metas = ""
-		for k in metas.keys():
-			if metas[k] > 0: string_metas += k.left(3) + ": " + str(estoque[k]) + "/" + str(metas[k]) + " | "
-		var status_texto = "PLAY" if not get_tree().paused else "PLANEJAMENTO"
-		info_label.text = "[%s] T: %s | $ %d | FASE %d | ATIVO: %s | %s" % [status_texto, _get_tempo_formatado(), dinheiro, nivel_atual, nomes_tiles[estado_selecionado], string_metas]
-
-func gastar_dinheiro(id_ferramenta, pos_tela: Vector2 = Vector2.ZERO) -> bool:
-	var custo = custos_construcao.get(id_ferramenta, 0)
-	if custo == 0: return true
-	dinheiro -= custo; _atualizar_status_bar()
-	if pos_tela != Vector2.ZERO: _spawn_floating_text(pos_tela, "- $" + str(custo), Color.RED)
-	return true
-
-func gastar_dinheiro_especifico(valor: int, pos_tela: Vector2) -> bool:
-	dinheiro -= valor; _atualizar_status_bar()
-	if pos_tela != Vector2.ZERO: _spawn_floating_text(pos_tela, "- $" + str(valor), Color.RED)
-	return true
-
-func reembolsar_dinheiro(id_ferramenta, pos_tela: Vector2):
-	var valor = custos_construcao.get(id_ferramenta, 0)
-	if valor > 0:
-		dinheiro += valor; _atualizar_status_bar()
-		if pos_tela != Vector2.ZERO: _spawn_floating_text(pos_tela, "+ $" + str(valor), Color.GREEN)
-
-func _spawn_floating_text(pos: Vector2, txt: String, col: Color):
-	var l = Label.new(); l.text = txt; l.add_theme_color_override("font_color", col); l.add_theme_font_size_override("font_size", 22)
-	l.position = pos + Vector2(randf_range(-15, 15), randf_range(-15, 15)); l.z_index = 50; add_child(l)
-	l.process_mode = Node.PROCESS_MODE_ALWAYS
-	var tw = create_tween()
-	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS) 
-	tw.tween_property(l, "position", l.position + Vector2(0,-60), 1.0)
-	tw.parallel().tween_property(l, "modulate:a", 0.0, 1.0)
-	tw.tween_callback(l.queue_free)
-
-func _input(event):
-	if event.is_action_pressed("ui_cancel") or (event is InputEventKey and event.pressed and event.keycode == KEY_P):
-		_alternar_pause()
-
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
-			if get_viewport().get_mouse_position().x > 130:
-				var lista = categorias.get(categoria_atual, [])
-				if lista.size() > 1 and estado_selecionado in lista:
-					var idx = lista.find(estado_selecionado)
-					if event.button_index == MOUSE_BUTTON_WHEEL_UP: idx = (idx - 1 + lista.size()) % lista.size()
-					if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: idx = (idx + 1) % lista.size()
-					_selecionar_ferramenta(lista[idx]); get_viewport().set_input_as_handled()
-
+# --- MAPA E CONSTRUÇÃO ---
 func _criar_matriz_vazia():
 	matriz_mapa.clear()
 	for x in range(tamanho_mapa):
@@ -372,9 +358,11 @@ func _reconstruir_malha():
 		for y in range(tamanho_mapa):
 			var tipo = matriz_mapa[x][y]
 			if not _eh_trilho_ou_estacao(tipo): continue
-			if tipo == 7:
-				var t = _get_tile_at(x, y); if t and not t.chave_aberta: continue
+			
+			# REMOVIDO o bloqueio físico por Chave/Semáforo no AStar.
+			# Agora o AStar sempre conhece o caminho, e o bloqueio é feito apenas no Movimento!
 			if trilhos_quebrados.has(Vector2i(x,y)): continue 
+			
 			astar.add_point(x + y * tamanho_mapa, Vector2(x, y))
 			if tipo == 6: astar.add_point(x + y * tamanho_mapa + 1000, Vector2(x, y))
 	
@@ -408,6 +396,59 @@ func _tem_saida(tipo, dir) -> bool:
 	if tipo in [5, 6, 7, 8, 17]: return true
 	return false
 
+# --- NOVO: FÍSICA E MOVIMENTO FRAME A FRAME ---
+func _processar_movimento_trens(delta):
+	for id in trens_ativos.keys():
+		var t = trens_ativos[id]
+		if not is_instance_valid(t): continue
+
+		var pts = t.get_meta("pontos")
+		var idx = t.get_meta("indice_alvo")
+		var indo = t.get_meta("indo")
+		var carga = t.get_meta("carga")
+
+		# VERIFICAÇÃO DE SEMÁFORO
+		var grid_pos = Vector2i(int(t.position.x / 100), int(t.position.y / 100))
+		var tile = _get_tile_at(grid_pos.x, grid_pos.y)
+		if tile and (tile.estado_atual == 23 or tile.estado_atual == 24):
+			if not tile.semaforo_aberto:
+				continue # Trem para imediatamente!
+
+		var alvo = pts[idx]
+		var vel = 250.0 * (verba_trens / 100.0) * (verba_vias / 100.0)
+
+		# Move o trem fisicamente em direção ao ponto AStar
+		t.position = t.position.move_toward(alvo, vel * delta)
+
+		# Lógica de Rotação (Para o Vagão sempre seguir atrás)
+		var prev_pos = t.get_meta("prev_pos", t.position)
+		if t.position.distance_squared_to(prev_pos) > 1.0:
+			t.rotation = prev_pos.angle_to_point(t.position)
+			t.set_meta("prev_pos", t.position)
+
+		# Se chegou no ponto alvo (Estação ou Curva intermediária)
+		if t.position.distance_to(alvo) < 1.0:
+			if indo:
+				if idx < pts.size() - 1:
+					t.set_meta("indice_alvo", idx + 1)
+				else: # Chegou na estação de coleta
+					t.set_meta("indo", false)
+					if pts.size() > 1: t.set_meta("indice_alvo", idx - 1)
+					t.get_node("Vagao").color = cores_carga[carga]
+			else:
+				if idx > 0:
+					t.set_meta("indice_alvo", idx - 1)
+				else: # Voltou pra Central
+					t.set_meta("indo", true)
+					if pts.size() > 1: t.set_meta("indice_alvo", 1)
+					t.get_node("Vagao").color = Color(0.3, 0.3, 0.3)
+					estoque[carga] += 1
+					dinheiro += recompensas[carga]
+					receita_semanal += recompensas[carga]
+					_spawn_floating_text(t.position, "+ $" + str(recompensas[carga]), Color.GREEN)
+					_atualizar_status_bar()
+					_checar_vitoria()
+
 func _verificar_integridade_trens():
 	var ids_para_remover = []
 	for id in trens_ativos.keys():
@@ -415,6 +456,7 @@ func _verificar_integridade_trens():
 		var origem = trem.get_meta("origem")
 		var destino = trem.get_meta("destino")
 		
+		# O único momento em que o trem morre agora é se o trilho debaixo dele for apagado (ou quebrado por desastre)
 		var path = astar.get_id_path(origem.x + origem.y * tamanho_mapa, destino.x + destino.y * tamanho_mapa)
 		if path.size() < 2:
 			ids_para_remover.append(id)
@@ -439,6 +481,32 @@ func tentar_lancar_trem():
 			var id = "T_%d_%d_%d" % [d.x, d.y, Time.get_ticks_msec()]
 			_spawnar_trem(pts, id, estacoes_oferta.get(d, "LEITE"), principal, d)
 
+func _spawnar_trem(pontos, id, carga, o, d):
+	var t = Node2D.new(); t.name = id; t.z_index = 20; add_child(t); trens_ativos[id] = t
+	
+	var loc = ColorRect.new(); loc.size = Vector2(60, 40); loc.color = Color(0.1, 0.1, 0.1); 
+	loc.position = Vector2(-30, -20)
+	t.add_child(loc)
+	
+	var vag = ColorRect.new(); vag.name = "Vagao"; vag.size = Vector2(40, 30); vag.color = Color(0.3, 0.3, 0.3); 
+	vag.position = Vector2(-75, -15) 
+	t.add_child(vag)
+	
+	# Salvando Dados Lógicos
+	t.set_meta("origem", o)
+	t.set_meta("destino", d)
+	t.set_meta("carga", carga)
+	t.set_meta("indo", true)
+	t.set_meta("indice_alvo", 1)
+	
+	var pts = []; 
+	for p in pontos: pts.append(Vector2(p.x*100 + 50, p.y*100 + 50))
+	t.set_meta("pontos", pts)
+	
+	var pos_inicial = pts[0]
+	t.set_meta("prev_pos", pos_inicial)
+	t.position = pos_inicial
+
 # --- PINCEL MÁGICO INTELIGENTE E AUTO-TILER ---
 func _prever_pincel_magico(x, y) -> int:
 	var dirs = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]
@@ -449,7 +517,6 @@ func _prever_pincel_magico(x, y) -> int:
 			if _eh_trilho_ou_estacao(matriz_mapa[n.x][n.y]): v.append(d)
 			
 	var tipo = 3
-	
 	if v.size() == 2:
 		var d1=v[0]; var d2=v[1]
 		if d1.x!=0 and d2.x!=0: tipo=3
@@ -460,8 +527,6 @@ func _prever_pincel_magico(x, y) -> int:
 		elif (d1==Vector2i(0,1) and d2==Vector2i(1,0)) or (d2==Vector2i(0,1) and d1==Vector2i(1,0)): tipo=21
 	elif v.size() == 3: tipo=5
 	elif v.size() == 4: tipo=6
-	
-	# Usando o Arraste para prever Retas H ou V quando não tem 2+ vizinhos
 	elif ultima_pos_pincel != Vector2i(-1, -1):
 		var diff = Vector2i(x, y) - ultima_pos_pincel
 		if diff.x != 0 and diff.y == 0: tipo = 3
@@ -469,7 +534,6 @@ func _prever_pincel_magico(x, y) -> int:
 	elif v.size() == 1:
 		if v[0].x != 0: tipo = 3
 		else: tipo = 4
-
 	return tipo
 
 func aplicar_pincel_magico(x, y):
@@ -488,14 +552,12 @@ func aplicar_pincel_magico(x, y):
 				t.estado_atual=tipo
 				t.queue_redraw()
 	
-	# Auto-Tiler: Atualiza os vizinhos para formar as curvas automaticamente
 	var dirs = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]
 	for d in dirs:
 		var nx = x + d.x
 		var ny = y + d.y
 		if nx >= 0 and nx < tamanho_mapa and ny >= 0 and ny < tamanho_mapa:
 			var tipo_vizinho = matriz_mapa[nx][ny]
-			# Só altera se já for um trilho/curva/cruzamento colocado
 			if tipo_vizinho in [3, 4, 18, 19, 20, 21, 5, 6]:
 				var novo_tipo = _prever_pincel_magico(nx, ny)
 				if tipo_vizinho != novo_tipo:
@@ -507,46 +569,6 @@ func aplicar_pincel_magico(x, y):
 	
 	_reconstruir_malha()
 	ultima_pos_pincel = Vector2i(x, y)
-
-
-
-func _spawnar_trem(pontos, id, carga, o, d):
-	var t = Node2D.new(); t.name = id; t.z_index = 20; add_child(t); trens_ativos[id] = t
-	
-	# --- TREM E VAGÃO MAIORES E ALINHADOS ---
-	var loc = ColorRect.new(); loc.size = Vector2(60, 40); loc.color = Color(0.1, 0.1, 0.1); 
-	loc.position = Vector2(-30, -20) # Centro da Locomotiva no Pivot
-	t.add_child(loc)
-	
-	var vag = ColorRect.new(); vag.name = "Vagao"; vag.size = Vector2(40, 30); vag.color = Color(0.3, 0.3, 0.3); 
-	vag.position = Vector2(-75, -15) # Vagão sempre ATRÁS (-X) da Locomotiva
-	t.add_child(vag)
-	# ----------------------------------------
-	
-	t.set_meta("origem", o)
-	t.set_meta("destino", d)
-	
-	# Define a posição inicial na memória para a rotação funcionar desde o primeiro frame
-	var pos_inicial = Vector2(pontos[0].x * 100 + 50, pontos[0].y * 100 + 50)
-	t.set_meta("prev_pos", pos_inicial)
-	t.position = pos_inicial
-	
-	var pts = []; 
-	# Agora o ponto de navegação fica exatamente no centro do tile (50, 50)
-	for p in pontos: pts.append(Vector2(p.x*100 + 50, p.y*100 + 50))
-	var p_rev = pts.duplicate(); p_rev.reverse()
-	
-	var vel = 0.4 / (verba_trens/100.0 * verba_vias/100.0)
-	var tw = create_tween().set_loops()
-	for p in pts: tw.tween_property(t, "position", p, vel)
-	tw.tween_callback(func(): if is_instance_valid(t): t.get_node("Vagao").color = cores_carga[carga])
-	for p in p_rev: tw.tween_property(t, "position", p, vel)
-	tw.tween_callback(func():
-		if is_instance_valid(t):
-			t.get_node("Vagao").color = Color(0.3, 0.3, 0.3); estoque[carga] += 1; dinheiro += recompensas[carga]; receita_semanal += recompensas[carga]
-			_spawn_floating_text(t.position, "+ $" + str(recompensas[carga]), Color.GREEN); _atualizar_status_bar(); _checar_vitoria())
-
-
 
 func _checar_vitoria():
 	var ok = true

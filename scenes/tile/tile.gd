@@ -78,7 +78,13 @@ func _gui_input(event):
 					chave_aberta = not chave_aberta
 					gm_ref._reconstruir_malha()
 					queue_redraw()
-				return
+					return
+				
+				# --- INTERAÇÃO COM SEMÁFORO ---
+				if estado_atual in [23, 24]:
+					semaforo_aberto = not semaforo_aberto
+					queue_redraw() # O trem vai enxergar isso no próximo frame
+					return
 				
 			if gm_ref.estado_selecionado == 0: 
 				_apagar_tile()
@@ -94,7 +100,6 @@ func _gui_input(event):
 # --- MÉTODOS DE AÇÃO (CONSTRUÇÃO E DESTRUIÇÃO) ---
 func _update_brush():
 	gm_ref.aplicar_pincel_magico(pos_x, pos_y)
-	# Atualiza o visual do próprio tile e dos vizinhos
 	queue_redraw()
 	var ds = [Vector2i(0,1), Vector2i(0,-1), Vector2i(1,0), Vector2i(-1,0)]
 	for d in ds:
@@ -103,7 +108,6 @@ func _update_brush():
 
 func _apagar_tile():
 	if estado_atual == 17 or estado_atual == 8:
-		# Proteção: Se o popup já estiver na tela (devido ao arraste rápido), ignora
 		if not gm_ref.popup_confirmacao.visible:
 			gm_ref.popup_confirmacao.popup_centered()
 			if not gm_ref.popup_confirmacao.confirmed.is_connected(_confirmar_remocao): 
@@ -125,7 +129,6 @@ func _apagar_tile():
 		gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual)
 		queue_redraw()
 		
-		# Força os vizinhos a recalcularem as curvas pelo auto-tiler ao apagar
 		var ds = [Vector2i(0,1), Vector2i(0,-1), Vector2i(1,0), Vector2i(-1,0)]
 		for d in ds:
 			var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
@@ -165,7 +168,6 @@ func _aplicar_estado():
 
 # --- MÉTODOS VISUAIS E DESENHO ---
 
-
 func _desenhar_simbolo(estado, alpha, tex_node):
 	var c = Color(0, 0, 0, alpha); var c_white = Color(1, 1, 1, alpha); var font = get_theme_default_font(); var rect = Rect2(Vector2.ZERO, size)
 	if estado in [3, 12, 15, 23]: tex_node.texture = _tex_trilho; tex_node.rotation = 0; tex_node.modulate = Color(0.1, 0.1, 0.1, alpha)
@@ -195,7 +197,6 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 	if estado == 23 or estado == 24: 
 		draw_rect(Rect2(40, 15, 20, 15) if estado==23 else Rect2(15, 40, 15, 20), c); draw_circle(Vector2(50, 22) if estado==23 else Vector2(22, 50), 5, Color(0, 1, 0, alpha) if semaforo_aberto else Color(1, 0, 0, alpha))
 	
-	# --- ESTAÇÕES EXPANDIDAS E MAIORES ---
 	if estado == 17: 
 		var rect_gigante = Rect2(-5, -5, 110, 110)
 		draw_rect(rect_gigante, Color(1, 0, 1, alpha))
@@ -209,14 +210,11 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 		draw_rect(Rect2(-5, 95, 110, 20), Color(0, 0, 0, alpha)) 
 		draw_rect(Rect2(-5, 95, 110, 20), c_white, false, 3.0)   
 		draw_string(font, Vector2(55, 50), "TEM " + gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "N/A"), HORIZONTAL_ALIGNMENT_CENTER, -1, 18, c)
-	# -------------------------------------
 	
 	if estado == 9: 
 		if arvore_cortada: draw_circle(Vector2(50, 50), 25, Color(0.82, 0.7, 0.55, alpha))
 		if not arvore_cortada: draw_colored_polygon(PackedVector2Array([Vector2(50, 15), Vector2(85, 85), Vector2(15, 85)]), Color(0.13, 0.54, 0.13, alpha))
 	if estado == 10: draw_rect(Rect2(25, 35, 50, 30), Color(0.5, 0.5, 0.5, alpha))
-
-
 
 func _draw():
 	var rect = Rect2(Vector2.ZERO, size)

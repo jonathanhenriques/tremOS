@@ -46,6 +46,9 @@ var cores_carga = {"LEITE": Color.WHITE, "MADEIRA": Color("#8b5a2b"), "TRIGO": C
 var custos_construcao = {3: 10, 4: 10, 18: 15, 19: 15, 20: 15, 21: 15, 5: 30, 6: 40, 7: 50, 12: 100, 13: 100, 15: 150, 16: 150, 23: 50, 24: 50}
 var estacoes_oferta = {} 
 
+var popup_game_over: ConfirmationDialog
+var jogo_perdido: bool = false
+
 var categorias = {"TRILHOS": [22, 3, 4, 18, 19, 20, 21, 5, 6, 7, 23, 24], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8, 12, 13, 15, 16]}
 var nomes_tiles = {0: "BORRACHA", 1: "SELEÇÃO", 2: "TERRA", 3: "TRILHO H", 4: "TRILHO V", 18: "┐ S-O", 19: "┘ N-O", 20: "└ N-L", 21: "┌ S-L", 5: "BIFURC. Y", 6: "CRUZAM. H", 7: "CHAVE", 17: "PRINCIPAL", 8: "ESTAÇÃO", 9: "ÁRVORE", 10: "PEDRA", 11: "ÁGUA", 14: "MONTANHA", 22: "PINCEL MÁGICO", 12: "PONTE H", 13: "PONTE V", 15: "TÚNEL H", 16: "TÚNEL V", 23: "SEMÁFORO H", 24: "SEMÁFORO V"}
 
@@ -72,6 +75,17 @@ func _process(delta):
 	# Limpa a memória direcional do pincel quando o usuário solta o clique
 	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		ultima_pos_pincel = Vector2i(-1, -1)
+		
+	# --- LÓGICA DE ROTAÇÃO DOS TRENS ---
+	# Faz o trem sempre "olhar" para onde está indo, garantindo que o vagão fique atrás
+	for id in trens_ativos.keys():
+		var t = trens_ativos[id]
+		if is_instance_valid(t):
+			var prev_pos = t.get_meta("prev_pos", t.position)
+			if t.position.distance_squared_to(prev_pos) > 1.0: # Se ele se moveu
+				t.rotation = prev_pos.angle_to_point(t.position)
+				t.set_meta("prev_pos", t.position)
+
 
 func _setup_dialogos():
 	popup_confirmacao = ConfirmationDialog.new(); add_child(popup_confirmacao)
@@ -90,7 +104,29 @@ func _setup_dialogos():
 	popup_relatorio.confirmed.connect(_iniciar_nova_semana)
 	popup_relatorio.process_mode = Node.PROCESS_MODE_ALWAYS
 	
+	# --- TELA DE COLISÃO (RESTAURADA) ---
+	popup_game_over = ConfirmationDialog.new()
+	add_child(popup_game_over)
+	popup_game_over.title = "💥 COLISÃO FERROVIÁRIA! 💥"
+	popup_game_over.ok_button_text = "Reiniciar Fase"
+	popup_game_over.cancel_button_text = "Abandonar Jogo"
+	popup_game_over.process_mode = Node.PROCESS_MODE_ALWAYS
+	
+	var btn_dev = popup_game_over.add_button("Ignorar e Continuar", false, "continuar_dev")
+	btn_dev.pressed.connect(func():
+		jogo_perdido = false
+		get_tree().paused = false
+		popup_game_over.hide()
+	)
+	
+	popup_game_over.confirmed.connect(func(): _iniciar_fase(nivel_atual))
+	popup_game_over.canceled.connect(func(): get_tree().quit())
+	# ------------------------------------
+	
 	_construir_painel_orcamento()
+
+
+
 
 func _construir_painel_orcamento():
 	popup_orcamento = AcceptDialog.new(); add_child(popup_orcamento)
@@ -472,15 +508,32 @@ func aplicar_pincel_magico(x, y):
 	_reconstruir_malha()
 	ultima_pos_pincel = Vector2i(x, y)
 
+
+
 func _spawnar_trem(pontos, id, carga, o, d):
 	var t = Node2D.new(); t.name = id; t.z_index = 20; add_child(t); trens_ativos[id] = t
-	var loc = ColorRect.new(); loc.size = Vector2(40, 30); loc.color = Color(0.1, 0.1, 0.1); t.add_child(loc)
-	var vag = ColorRect.new(); vag.name = "Vagao"; vag.size = Vector2(25, 20); vag.color = Color(0.3, 0.3, 0.3); vag.position = Vector2(42, 5); t.add_child(vag)
+	
+	# --- TREM E VAGÃO MAIORES E ALINHADOS ---
+	var loc = ColorRect.new(); loc.size = Vector2(60, 40); loc.color = Color(0.1, 0.1, 0.1); 
+	loc.position = Vector2(-30, -20) # Centro da Locomotiva no Pivot
+	t.add_child(loc)
+	
+	var vag = ColorRect.new(); vag.name = "Vagao"; vag.size = Vector2(40, 30); vag.color = Color(0.3, 0.3, 0.3); 
+	vag.position = Vector2(-75, -15) # Vagão sempre ATRÁS (-X) da Locomotiva
+	t.add_child(vag)
+	# ----------------------------------------
 	
 	t.set_meta("origem", o)
 	t.set_meta("destino", d)
 	
-	var pts = []; for p in pontos: pts.append(Vector2(p.x*100 + 10, p.y*100 + 35))
+	# Define a posição inicial na memória para a rotação funcionar desde o primeiro frame
+	var pos_inicial = Vector2(pontos[0].x * 100 + 50, pontos[0].y * 100 + 50)
+	t.set_meta("prev_pos", pos_inicial)
+	t.position = pos_inicial
+	
+	var pts = []; 
+	# Agora o ponto de navegação fica exatamente no centro do tile (50, 50)
+	for p in pontos: pts.append(Vector2(p.x*100 + 50, p.y*100 + 50))
 	var p_rev = pts.duplicate(); p_rev.reverse()
 	
 	var vel = 0.4 / (verba_trens/100.0 * verba_vias/100.0)
@@ -492,6 +545,8 @@ func _spawnar_trem(pontos, id, carga, o, d):
 		if is_instance_valid(t):
 			t.get_node("Vagao").color = Color(0.3, 0.3, 0.3); estoque[carga] += 1; dinheiro += recompensas[carga]; receita_semanal += recompensas[carga]
 			_spawn_floating_text(t.position, "+ $" + str(recompensas[carga]), Color.GREEN); _atualizar_status_bar(); _checar_vitoria())
+
+
 
 func _checar_vitoria():
 	var ok = true

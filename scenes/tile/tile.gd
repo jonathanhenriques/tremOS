@@ -164,20 +164,12 @@ func _aplicar_estado():
 	queue_redraw()
 
 # --- MÉTODOS VISUAIS E DESENHO ---
+
+
 func _desenhar_simbolo(estado, alpha, tex_node):
-	var c = Color(0, 0, 0, alpha)
-	var c_white = Color(1, 1, 1, alpha)
-	var font = get_theme_default_font()
-	var rect = Rect2(Vector2.ZERO, size)
-	
-	if estado in [3, 12, 15, 23]: 
-		tex_node.texture = _tex_trilho
-		tex_node.rotation = 0
-		tex_node.modulate = Color(0.1, 0.1, 0.1, alpha)
-	if estado in [4, 13, 16, 24]: 
-		tex_node.texture = _tex_trilho
-		tex_node.rotation = PI/2
-		tex_node.modulate = Color(0.1, 0.1, 0.1, alpha)
+	var c = Color(0, 0, 0, alpha); var c_white = Color(1, 1, 1, alpha); var font = get_theme_default_font(); var rect = Rect2(Vector2.ZERO, size)
+	if estado in [3, 12, 15, 23]: tex_node.texture = _tex_trilho; tex_node.rotation = 0; tex_node.modulate = Color(0.1, 0.1, 0.1, alpha)
+	if estado in [4, 13, 16, 24]: tex_node.texture = _tex_trilho; tex_node.rotation = PI/2; tex_node.modulate = Color(0.1, 0.1, 0.1, alpha)
 	if estado in [18, 19, 20, 21]:
 		var p1 = Vector2(50, 50); var p2 = Vector2(50, 50)
 		if estado == 18: p1 = Vector2(50, 100); p2 = Vector2(0, 50)
@@ -186,43 +178,45 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 		if estado == 21: p1 = Vector2(50, 100); p2 = Vector2(100, 50)
 		draw_polyline_colors(PackedVector2Array([p1, Vector2(50, 50), p2]), [c, c, c], 8.0, true)
 	if estado == 5 or estado == 6:
-		var d_list = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]
-		var viz = []
+		var d_list = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]; var viz = []
 		for d in d_list:
 			var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
 			if n and gm_ref._eh_trilho_ou_estacao(n.estado_atual): viz.append(d)
-		if viz.size() == 0: 
-			draw_string(font, Vector2(25, 65), "Y" if estado==5 else "H", HORIZONTAL_ALIGNMENT_CENTER, -1, 60, c)
+		if viz.size() == 0: draw_string(font, Vector2(25, 65), "Y" if estado==5 else "H", HORIZONTAL_ALIGNMENT_CENTER, -1, 60, c)
 		if viz.size() > 0:
-			for d in viz: 
-				draw_line(Vector2(50, 50), Vector2(50, 50) + Vector2(d.x, d.y) * 50, c, 8.0)
-			draw_circle(Vector2(50, 50), 6.0, c)
-	if estado == 7: 
-		draw_rect(rect, Color(0.1, 0.5, 0.1, 0.3 * alpha) if chave_aberta else Color(0.5, 0.1, 0.1, 0.3 * alpha))
-		draw_string(font, Vector2(35, 60), "S", HORIZONTAL_ALIGNMENT_CENTER, -1, 30, c_white)
+			for d in viz: draw_line(Vector2(50, 50), Vector2(50, 50) + Vector2(d.x, d.y) * 50, c, 8.0)
+			if estado == 5: 
+				draw_circle(Vector2(50, 50), 14.0, c)
+				draw_colored_polygon(PackedVector2Array([Vector2(50, 42), Vector2(58, 56), Vector2(42, 56)]), Color(0.9, 0.7, 0.1, alpha))
+			elif estado == 6:
+				draw_rect(Rect2(38, 38, 24, 24), c)
+				draw_rect(Rect2(42, 42, 16, 16), Color(0.5, 0.5, 0.5, alpha))
+	if estado == 7: draw_rect(rect, Color(0.1, 0.5, 0.1, 0.3 * alpha) if chave_aberta else Color(0.5, 0.1, 0.1, 0.3 * alpha)); draw_string(font, Vector2(35, 60), "S", HORIZONTAL_ALIGNMENT_CENTER, -1, 30, c_white)
 	if estado == 23 or estado == 24: 
-		draw_rect(Rect2(40, 15, 20, 15) if estado==23 else Rect2(15, 40, 15, 20), c)
-		draw_circle(Vector2(50, 22) if estado==23 else Vector2(22, 50), 5, Color(0, 1, 0, alpha) if semaforo_aberto else Color(1, 0, 0, alpha))
+		draw_rect(Rect2(40, 15, 20, 15) if estado==23 else Rect2(15, 40, 15, 20), c); draw_circle(Vector2(50, 22) if estado==23 else Vector2(22, 50), 5, Color(0, 1, 0, alpha) if semaforo_aberto else Color(1, 0, 0, alpha))
 	
+	# --- ESTAÇÕES EXPANDIDAS E MAIORES ---
 	if estado == 17: 
-		draw_rect(rect, Color(1, 0, 1, alpha))
-		draw_rect(Rect2(10, 10, 80, 80), c_white, false, 4.0)
-		draw_rect(Rect2(0, 85, 100, 15), Color(0, 0, 0, alpha)) 
-		draw_rect(Rect2(0, 85, 100, 15), c_white, false, 3.0)   
-		draw_string(font, Vector2(50, 20), "CENTRAL", HORIZONTAL_ALIGNMENT_CENTER, -1, 12, c)
+		var rect_gigante = Rect2(-5, -5, 110, 110)
+		draw_rect(rect_gigante, Color(1, 0, 1, alpha))
+		draw_rect(Rect2(5, 5, 90, 90), c_white, false, 5.0)
+		draw_rect(Rect2(-5, 95, 110, 20), Color(0, 0, 0, alpha)) 
+		draw_rect(Rect2(-5, 95, 110, 20), c_white, false, 3.0)   
+		draw_string(font, Vector2(55, 50), "CENTRAL", HORIZONTAL_ALIGNMENT_CENTER, -1, 16, c_white)
 	if estado == 8: 
-		draw_rect(rect, Color(1, 0.84, 0, alpha))
-		draw_rect(Rect2(0, 85, 100, 15), Color(0, 0, 0, alpha)) 
-		draw_rect(Rect2(0, 85, 100, 15), c_white, false, 3.0)   
-		draw_string(font, Vector2(50, 20), "TEM " + gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "N/A"), HORIZONTAL_ALIGNMENT_CENTER, -1, 12, c)
+		var rect_gigante = Rect2(-5, -5, 110, 110)
+		draw_rect(rect_gigante, Color(1, 0.84, 0, alpha))
+		draw_rect(Rect2(-5, 95, 110, 20), Color(0, 0, 0, alpha)) 
+		draw_rect(Rect2(-5, 95, 110, 20), c_white, false, 3.0)   
+		draw_string(font, Vector2(55, 50), "TEM " + gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "N/A"), HORIZONTAL_ALIGNMENT_CENTER, -1, 18, c)
+	# -------------------------------------
 	
 	if estado == 9: 
-		if arvore_cortada: 
-			draw_circle(Vector2(50, 50), 25, Color(0.82, 0.7, 0.55, alpha))
-		if not arvore_cortada: 
-			draw_colored_polygon(PackedVector2Array([Vector2(50, 15), Vector2(85, 85), Vector2(15, 85)]), Color(0.13, 0.54, 0.13, alpha))
-	if estado == 10: 
-		draw_rect(Rect2(25, 35, 50, 30), Color(0.5, 0.5, 0.5, alpha))
+		if arvore_cortada: draw_circle(Vector2(50, 50), 25, Color(0.82, 0.7, 0.55, alpha))
+		if not arvore_cortada: draw_colored_polygon(PackedVector2Array([Vector2(50, 15), Vector2(85, 85), Vector2(15, 85)]), Color(0.13, 0.54, 0.13, alpha))
+	if estado == 10: draw_rect(Rect2(25, 35, 50, 30), Color(0.5, 0.5, 0.5, alpha))
+
+
 
 func _draw():
 	var rect = Rect2(Vector2.ZERO, size)

@@ -1,4 +1,4 @@
-# game_manager.gd - Colisões Físicas, Fila de Lançamento e Game Over
+# game_manager.gd - Colisões Físicas, Fila de Lançamento e Sandbox Pós-Vitória
 extends Node2D
 
 # --- CONFIGURAÇÕES GERAIS E EXPORTS ---
@@ -27,6 +27,9 @@ var estado_selecionado = 22 # Inicia no Pincel Mágico
 var astar = AStar2D.new()
 var trens_ativos = {}
 var jogo_perdido: bool = false
+var fase_concluida := false
+var jogo_infinito := false # Permite continuar jogando após vencer a fase
+var nivel_atual: int = 1
 var ultima_pos_pincel: Vector2i = Vector2i(-1, -1)
 var categoria_atual = "TRILHOS"
 
@@ -50,8 +53,6 @@ var semana_atual: int = 1
 var receita_semanal: int = 0 
 
 # --- DICIONÁRIOS E RECURSOS ---
-var fase_concluida := false
-var nivel_atual: int = 1
 var estoque = {"LEITE": 0, "MADEIRA": 0, "TRIGO": 0, "ACO": 0, "CARVAO": 0}
 var metas = {"LEITE": 0, "MADEIRA": 0, "TRIGO": 0, "ACO": 0, "CARVAO": 0}
 var recompensas = {"LEITE": 200, "MADEIRA": 150, "TRIGO": 180, "ACO": 300, "CARVAO": 250}
@@ -89,7 +90,7 @@ func _process(delta):
 				if tempo_prox_trem <= 0.0:
 					var trem_data = fila_trens_pendentes.pop_front()
 					_spawnar_trem(trem_data.pts, trem_data.id, trem_data.carga, trem_data.o, trem_data.d)
-					tempo_prox_trem = 2.0 # 2 segundos de intervalo de saída da estação
+					tempo_prox_trem = 2.0 # 2 segundos de intervalo
 			
 			_processar_movimento_trens(delta)
 			
@@ -128,8 +129,18 @@ func _setup_dialogos():
 	
 	popup_vitoria = ConfirmationDialog.new(); add_child(popup_vitoria)
 	popup_vitoria.title = "VITÓRIA!"; popup_vitoria.ok_button_text = "Próxima Fase"; popup_vitoria.cancel_button_text = "Continuar"
-	popup_vitoria.confirmed.connect(_avancar_fase)
 	popup_vitoria.process_mode = Node.PROCESS_MODE_ALWAYS
+	
+	# Eventos do Popup de Vitória atualizados
+	popup_vitoria.confirmed.connect(func():
+		get_tree().paused = false
+		_avancar_fase()
+	)
+	popup_vitoria.canceled.connect(func():
+		fase_concluida = false
+		jogo_infinito = true
+		get_tree().paused = false
+	)
 
 	popup_relatorio = AcceptDialog.new(); add_child(popup_relatorio)
 	popup_relatorio.title = "Balanço Financeiro Semanal"
@@ -146,13 +157,12 @@ func _setup_dialogos():
 	popup_game_over.cancel_button_text = "Abandonar Jogo"
 	popup_game_over.process_mode = Node.PROCESS_MODE_ALWAYS
 	
-	# Só adiciona o botão de continuar (trapaça) se estiver no modo de desenvolvimento
 	if modo_dev:
 		var btn_dev = popup_game_over.add_button("Modo Dev: Ignorar", false, "continuar_dev")
 		btn_dev.pressed.connect(func():
 			jogo_perdido = false
 			get_tree().paused = false
-			ignorar_colisao_timer = 3.0 # Ficam intangíveis por 3s para se soltarem
+			ignorar_colisao_timer = 3.0 # Ficam intangíveis por 3s
 			popup_game_over.hide()
 		)
 	
@@ -360,8 +370,10 @@ func _iniciar_nova_semana():
 
 func _iniciar_fase(num):
 	get_tree().paused = false
-	fase_concluida = false; tempo_fase = 0.0; tempo_semana = 0.0; semana_atual = 1; receita_semanal = 0
+	fase_concluida = false
 	jogo_perdido = false
+	jogo_infinito = false
+	tempo_fase = 0.0; tempo_semana = 0.0; semana_atual = 1; receita_semanal = 0
 	dinheiro = 2000 + (num * 500)
 	
 	trilhos_quebrados.clear()
@@ -381,10 +393,22 @@ func _iniciar_fase(num):
 	_atualizar_status_bar()
 
 func _checar_vitoria():
+	if jogo_infinito: return # Evita checar se o jogador já decidiu continuar livremente
+	
+	var tem_metas = false
 	var ok = true
-	for r in metas.keys(): if metas[r] > 0 and estoque[r] < metas[r]: ok = false
-	if ok and not fase_concluida: 
-		fase_concluida = true; popup_vitoria.dialog_text = "Fase concluída em %s" % _get_tempo_formatado(); popup_vitoria.popup_centered()
+	
+	for r in metas.keys(): 
+		if metas[r] > 0:
+			tem_metas = true
+			if estoque[r] < metas[r]: 
+				ok = false
+				
+	if tem_metas and ok and not fase_concluida: 
+		fase_concluida = true
+		get_tree().paused = true # Pausa fisicamente o jogo para a comemoração
+		popup_vitoria.dialog_text = "Fase concluída em %s!" % _get_tempo_formatado()
+		popup_vitoria.popup_centered()
 
 # ==========================================
 # MAPA E AStar2D
@@ -595,7 +619,6 @@ func _verificar_colisoes():
 			var t2 = trens_lista[j]
 			if not is_instance_valid(t2): continue
 
-			# Trens medem 60x40. Se a distância entre o centro deles for menor que 50px, é acidente na certa.
 			if t1.position.distance_to(t2.position) < 50.0:
 				jogo_perdido = true
 				get_tree().paused = true
@@ -617,11 +640,9 @@ func tentar_lancar_trem():
 			var pts = []; for pid in p_ids: pts.append(astar.get_point_position(pid))
 			var id = "T_%d_%d_%d" % [d.x, d.y, Time.get_ticks_msec()]
 			
-			# ADICIONA NA FILA EM VEZ DE LANÇAR IMEDIATAMENTE
 			fila_trens_pendentes.append({
 				"pts": pts, "id": id, "carga": estacoes_oferta.get(d, "LEITE"), "o": principal, "d": d
 			})
-			# Dá um feedback visual na estação para o jogador saber que agendou a saída
 			var px = principal.x * 100 + 50; var py = principal.y * 100 + 50
 			_spawn_floating_text(Vector2(px, py), "AGENDADO!", Color.YELLOW)
 

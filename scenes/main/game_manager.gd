@@ -18,6 +18,9 @@ var popup_vitoria: ConfirmationDialog
 var popup_relatorio: AcceptDialog 
 var popup_orcamento: AcceptDialog
 
+# --- VARIÁVEL DO PINCEL INTELIGENTE ---
+var ultima_pos_pincel: Vector2i = Vector2i(-1, -1)
+
 # Variável para o Botão de Pause
 var botao_pause: Button
 
@@ -46,9 +49,6 @@ var estacoes_oferta = {}
 var categorias = {"TRILHOS": [22, 3, 4, 18, 19, 20, 21, 5, 6, 7, 23, 24], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8, 12, 13, 15, 16]}
 var nomes_tiles = {0: "BORRACHA", 1: "SELEÇÃO", 2: "TERRA", 3: "TRILHO H", 4: "TRILHO V", 18: "┐ S-O", 19: "┘ N-O", 20: "└ N-L", 21: "┌ S-L", 5: "BIFURC. Y", 6: "CRUZAM. H", 7: "CHAVE", 17: "PRINCIPAL", 8: "ESTAÇÃO", 9: "ÁRVORE", 10: "PEDRA", 11: "ÁGUA", 14: "MONTANHA", 22: "PINCEL MÁGICO", 12: "PONTE H", 13: "PONTE V", 15: "TÚNEL H", 16: "TÚNEL V", 23: "SEMÁFORO H", 24: "SEMÁFORO V"}
 
-var popup_game_over: ConfirmationDialog
-var jogo_perdido: bool = false
-
 @onready var mapa_node = $"../Mapa"
 
 func _ready():
@@ -68,48 +68,27 @@ func _process(delta):
 			if tempo_semana >= duracao_semana:
 				_gerar_relatorio_semanal()
 		_atualizar_status_bar()
+		
+	# Limpa a memória direcional do pincel quando o usuário solta o clique
+	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		ultima_pos_pincel = Vector2i(-1, -1)
 
 func _setup_dialogos():
-	popup_confirmacao = ConfirmationDialog.new()
-	add_child(popup_confirmacao)
-	popup_confirmacao.title = "Aviso de Engenharia"
-	popup_confirmacao.dialog_text = "Deseja remover esta estação?"
+	popup_confirmacao = ConfirmationDialog.new(); add_child(popup_confirmacao)
+	popup_confirmacao.title = "Aviso de Engenharia"; popup_confirmacao.dialog_text = "Deseja remover esta estação?"
 	popup_confirmacao.process_mode = Node.PROCESS_MODE_ALWAYS
 	
-	popup_vitoria = ConfirmationDialog.new()
-	add_child(popup_vitoria)
-	popup_vitoria.title = "VITÓRIA!"
-	popup_vitoria.ok_button_text = "Próxima Fase"
-	popup_vitoria.cancel_button_text = "Continuar"
+	popup_vitoria = ConfirmationDialog.new(); add_child(popup_vitoria)
+	popup_vitoria.title = "VITÓRIA!"; popup_vitoria.ok_button_text = "Próxima Fase"; popup_vitoria.cancel_button_text = "Continuar"
 	popup_vitoria.confirmed.connect(_avancar_fase)
 	popup_vitoria.process_mode = Node.PROCESS_MODE_ALWAYS
 
-	popup_relatorio = AcceptDialog.new()
-	add_child(popup_relatorio)
+	popup_relatorio = AcceptDialog.new(); add_child(popup_relatorio)
 	popup_relatorio.title = "Balanço Financeiro Semanal"
 	popup_relatorio.ok_button_text = "Iniciar Nova Semana"
 	popup_relatorio.exclusive = true 
 	popup_relatorio.confirmed.connect(_iniciar_nova_semana)
 	popup_relatorio.process_mode = Node.PROCESS_MODE_ALWAYS
-	
-	# --- POPUP DE GAME OVER E COLISÃO ---
-	popup_game_over = ConfirmationDialog.new()
-	add_child(popup_game_over)
-	popup_game_over.title = "💥 COLISÃO FERROVIÁRIA! 💥"
-	popup_game_over.ok_button_text = "Reiniciar Fase"
-	popup_game_over.cancel_button_text = "Abandonar Jogo"
-	popup_game_over.process_mode = Node.PROCESS_MODE_ALWAYS
-	
-	# Botão especial para desenvolvimento
-	var btn_dev = popup_game_over.add_button("Ignorar e Continuar", false, "continuar_dev")
-	btn_dev.pressed.connect(func():
-		jogo_perdido = false
-		get_tree().paused = false
-		popup_game_over.hide()
-	)
-	
-	popup_game_over.confirmed.connect(func(): _iniciar_fase(nivel_atual))
-	popup_game_over.canceled.connect(func(): get_tree().quit())
 	
 	_construir_painel_orcamento()
 
@@ -246,9 +225,7 @@ func _criar_ui_sistema_soko():
 	sub_menu_container = HBoxContainer.new(); scroll.add_child(sub_menu_container)
 	var lateral = PanelContainer.new(); lateral.custom_minimum_size = Vector2(130, 0); lateral.set_anchors_preset(Control.PRESET_LEFT_WIDE); lateral.offset_top = 95; canvas.add_child(lateral)
 	
-	# --- CORREÇÃO DA LINHA 220 ---
 	var vbox = VBoxContainer.new(); lateral.add_child(vbox)
-	# -----------------------------
 	
 	for n in ["BORRACHA", "SELEÇÃO"]:
 		var b = Button.new(); b.text = n; b.custom_minimum_size = Vector2(110, 45); vbox.add_child(b)
@@ -376,7 +353,6 @@ func _reconstruir_malha():
 					var tb = matriz_mapa[nx][ny]
 					if _eh_trilho_ou_estacao(tb) and not trilhos_quebrados.has(Vector2i(nx,ny)): 
 						_tentar_conectar(x,y,ta,nx,ny,tb,d)
-	# --- NOVO: Verifica se os trens atuais ainda têm caminho livre ---
 	_verificar_integridade_trens()
 
 func _tentar_conectar(ax, ay, ta, bx, by, tb, d):
@@ -396,7 +372,6 @@ func _tem_saida(tipo, dir) -> bool:
 	if tipo in [5, 6, 7, 8, 17]: return true
 	return false
 
-# --- NOVO: Função para parar trens se o trilho quebrar ---
 func _verificar_integridade_trens():
 	var ids_para_remover = []
 	for id in trens_ativos.keys():
@@ -404,17 +379,14 @@ func _verificar_integridade_trens():
 		var origem = trem.get_meta("origem")
 		var destino = trem.get_meta("destino")
 		
-		# Verifica se ainda existe um caminho entre as estações usando o AStar atualizado
 		var path = astar.get_id_path(origem.x + origem.y * tamanho_mapa, destino.x + destino.y * tamanho_mapa)
-		
-		# Se o caminho sumiu (size < 2), o trem "quebra"
 		if path.size() < 2:
 			ids_para_remover.append(id)
 	
 	for id in ids_para_remover:
 		if is_instance_valid(trens_ativos[id]):
-			trens_ativos[id].queue_free() # Remove o trem do mapa
-		trens_ativos.erase(id) # Remove do dicionário
+			trens_ativos[id].queue_free()
+		trens_ativos.erase(id)
 
 func tentar_lancar_trem():
 	if get_tree().paused == true: return 
@@ -431,42 +403,80 @@ func tentar_lancar_trem():
 			var id = "T_%d_%d_%d" % [d.x, d.y, Time.get_ticks_msec()]
 			_spawnar_trem(pts, id, estacoes_oferta.get(d, "LEITE"), principal, d)
 
+# --- PINCEL MÁGICO INTELIGENTE E AUTO-TILER ---
 func _prever_pincel_magico(x, y) -> int:
-	var dirs = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]; var v = []
+	var dirs = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]
+	var v = []
 	for d in dirs:
 		var n = Vector2i(x,y)+d
 		if n.x>=0 and n.x<tamanho_mapa and n.y>=0 and n.y<tamanho_mapa:
 			if _eh_trilho_ou_estacao(matriz_mapa[n.x][n.y]): v.append(d)
+			
 	var tipo = 3
+	
 	if v.size() == 2:
 		var d1=v[0]; var d2=v[1]
 		if d1.x!=0 and d2.x!=0: tipo=3
-		if d1.y!=0 and d2.y!=0: tipo=4
-		if (d1==Vector2i(0,1) and d2==Vector2i(-1,0)) or (d2==Vector2i(0,1) and d1==Vector2i(-1,0)): tipo=18
-		if (d1==Vector2i(0,-1) and d2==Vector2i(-1,0)) or (d2==Vector2i(0,-1) and d1==Vector2i(-1,0)): tipo=19
-		if (d1==Vector2i(0,-1) and d2==Vector2i(1,0)) or (d2==Vector2i(0,-1) and d1==Vector2i(1,0)): tipo=20
-		if (d1==Vector2i(0,1) and d2==Vector2i(1,0)) or (d2==Vector2i(0,1) and d1==Vector2i(1,0)): tipo=21
-	if v.size() == 3: tipo=5
-	if v.size() == 4: tipo=6
+		elif d1.y!=0 and d2.y!=0: tipo=4
+		elif (d1==Vector2i(0,1) and d2==Vector2i(-1,0)) or (d2==Vector2i(0,1) and d1==Vector2i(-1,0)): tipo=18
+		elif (d1==Vector2i(0,-1) and d2==Vector2i(-1,0)) or (d2==Vector2i(0,-1) and d1==Vector2i(-1,0)): tipo=19
+		elif (d1==Vector2i(0,-1) and d2==Vector2i(1,0)) or (d2==Vector2i(0,-1) and d1==Vector2i(1,0)): tipo=20
+		elif (d1==Vector2i(0,1) and d2==Vector2i(1,0)) or (d2==Vector2i(0,1) and d1==Vector2i(1,0)): tipo=21
+	elif v.size() == 3: tipo=5
+	elif v.size() == 4: tipo=6
+	
+	# Usando o Arraste para prever Retas H ou V quando não tem 2+ vizinhos
+	elif ultima_pos_pincel != Vector2i(-1, -1):
+		var diff = Vector2i(x, y) - ultima_pos_pincel
+		if diff.x != 0 and diff.y == 0: tipo = 3
+		elif diff.y != 0 and diff.x == 0: tipo = 4
+	elif v.size() == 1:
+		if v[0].x != 0: tipo = 3
+		else: tipo = 4
+
 	return tipo
 
 func aplicar_pincel_magico(x, y):
 	if x < 0 or x >= tamanho_mapa or y < 0 or y >= tamanho_mapa: return
 	if matriz_mapa[x][y] in [17, 8, 10]: return
 	var tipo = _prever_pincel_magico(x, y)
+	
 	if matriz_mapa[x][y] != tipo:
 		var tile_antigo = matriz_mapa[x][y]
 		var pos_tela = Vector2(x*100+25, y*100)
 		if gastar_dinheiro(tipo, pos_tela):
 			if tile_antigo not in [2, 11, 14, 9, 10]: reembolsar_dinheiro(tile_antigo, pos_tela)
-			atualizar_matriz(x,y,tipo); var t=_get_tile_at(x,y); if t: t.estado_atual=tipo; t.queue_redraw()
+			matriz_mapa[x][y] = tipo
+			var t=_get_tile_at(x,y)
+			if t: 
+				t.estado_atual=tipo
+				t.queue_redraw()
+	
+	# Auto-Tiler: Atualiza os vizinhos para formar as curvas automaticamente
+	var dirs = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]
+	for d in dirs:
+		var nx = x + d.x
+		var ny = y + d.y
+		if nx >= 0 and nx < tamanho_mapa and ny >= 0 and ny < tamanho_mapa:
+			var tipo_vizinho = matriz_mapa[nx][ny]
+			# Só altera se já for um trilho/curva/cruzamento colocado
+			if tipo_vizinho in [3, 4, 18, 19, 20, 21, 5, 6]:
+				var novo_tipo = _prever_pincel_magico(nx, ny)
+				if tipo_vizinho != novo_tipo:
+					matriz_mapa[nx][ny] = novo_tipo
+					var t_viz = _get_tile_at(nx, ny)
+					if t_viz:
+						t_viz.estado_atual = novo_tipo
+						t_viz.queue_redraw()
+	
+	_reconstruir_malha()
+	ultima_pos_pincel = Vector2i(x, y)
 
 func _spawnar_trem(pontos, id, carga, o, d):
 	var t = Node2D.new(); t.name = id; t.z_index = 20; add_child(t); trens_ativos[id] = t
 	var loc = ColorRect.new(); loc.size = Vector2(40, 30); loc.color = Color(0.1, 0.1, 0.1); t.add_child(loc)
 	var vag = ColorRect.new(); vag.name = "Vagao"; vag.size = Vector2(25, 20); vag.color = Color(0.3, 0.3, 0.3); vag.position = Vector2(42, 5); t.add_child(vag)
 	
-	# Guardamos os dados de origem e destino para verificação futura
 	t.set_meta("origem", o)
 	t.set_meta("destino", d)
 	
@@ -510,6 +520,7 @@ func _gerar_mapa_nivel_3():
 	_aplicar_no_mapa(2, 2, 17); _aplicar_estacao_oferta(17, 2, "ACO"); _aplicar_estacao_oferta(2, 17, "CARVAO"); _aplicar_estacao_oferta(17, 17, "TRIGO")
 
 func _aplicar_estacao_oferta(x, y, tipo): estacoes_oferta[Vector2i(x, y)] = tipo; _aplicar_no_mapa(x, y, 8)
+
 func _aplicar_no_mapa(x, y, estado):
 	matriz_mapa[x][y] = estado; var t = _get_tile_at(x, y)
 	if t: t.estado_atual = estado; t.base_bioma = estado if estado in [2,11,14] else 2; t.queue_redraw()

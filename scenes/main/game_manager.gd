@@ -46,6 +46,9 @@ var estacoes_oferta = {}
 var categorias = {"TRILHOS": [22, 3, 4, 18, 19, 20, 21, 5, 6, 7, 23, 24], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8, 12, 13, 15, 16]}
 var nomes_tiles = {0: "BORRACHA", 1: "SELEÇÃO", 2: "TERRA", 3: "TRILHO H", 4: "TRILHO V", 18: "┐ S-O", 19: "┘ N-O", 20: "└ N-L", 21: "┌ S-L", 5: "BIFURC. Y", 6: "CRUZAM. H", 7: "CHAVE", 17: "PRINCIPAL", 8: "ESTAÇÃO", 9: "ÁRVORE", 10: "PEDRA", 11: "ÁGUA", 14: "MONTANHA", 22: "PINCEL MÁGICO", 12: "PONTE H", 13: "PONTE V", 15: "TÚNEL H", 16: "TÚNEL V", 23: "SEMÁFORO H", 24: "SEMÁFORO V"}
 
+var popup_game_over: ConfirmationDialog
+var jogo_perdido: bool = false
+
 @onready var mapa_node = $"../Mapa"
 
 func _ready():
@@ -67,21 +70,46 @@ func _process(delta):
 		_atualizar_status_bar()
 
 func _setup_dialogos():
-	popup_confirmacao = ConfirmationDialog.new(); add_child(popup_confirmacao)
-	popup_confirmacao.title = "Aviso de Engenharia"; popup_confirmacao.dialog_text = "Deseja remover esta estação?"
+	popup_confirmacao = ConfirmationDialog.new()
+	add_child(popup_confirmacao)
+	popup_confirmacao.title = "Aviso de Engenharia"
+	popup_confirmacao.dialog_text = "Deseja remover esta estação?"
 	popup_confirmacao.process_mode = Node.PROCESS_MODE_ALWAYS
 	
-	popup_vitoria = ConfirmationDialog.new(); add_child(popup_vitoria)
-	popup_vitoria.title = "VITÓRIA!"; popup_vitoria.ok_button_text = "Próxima Fase"; popup_vitoria.cancel_button_text = "Continuar"
+	popup_vitoria = ConfirmationDialog.new()
+	add_child(popup_vitoria)
+	popup_vitoria.title = "VITÓRIA!"
+	popup_vitoria.ok_button_text = "Próxima Fase"
+	popup_vitoria.cancel_button_text = "Continuar"
 	popup_vitoria.confirmed.connect(_avancar_fase)
 	popup_vitoria.process_mode = Node.PROCESS_MODE_ALWAYS
 
-	popup_relatorio = AcceptDialog.new(); add_child(popup_relatorio)
+	popup_relatorio = AcceptDialog.new()
+	add_child(popup_relatorio)
 	popup_relatorio.title = "Balanço Financeiro Semanal"
 	popup_relatorio.ok_button_text = "Iniciar Nova Semana"
 	popup_relatorio.exclusive = true 
 	popup_relatorio.confirmed.connect(_iniciar_nova_semana)
 	popup_relatorio.process_mode = Node.PROCESS_MODE_ALWAYS
+	
+	# --- POPUP DE GAME OVER E COLISÃO ---
+	popup_game_over = ConfirmationDialog.new()
+	add_child(popup_game_over)
+	popup_game_over.title = "💥 COLISÃO FERROVIÁRIA! 💥"
+	popup_game_over.ok_button_text = "Reiniciar Fase"
+	popup_game_over.cancel_button_text = "Abandonar Jogo"
+	popup_game_over.process_mode = Node.PROCESS_MODE_ALWAYS
+	
+	# Botão especial para desenvolvimento
+	var btn_dev = popup_game_over.add_button("Ignorar e Continuar", false, "continuar_dev")
+	btn_dev.pressed.connect(func():
+		jogo_perdido = false
+		get_tree().paused = false
+		popup_game_over.hide()
+	)
+	
+	popup_game_over.confirmed.connect(func(): _iniciar_fase(nivel_atual))
+	popup_game_over.canceled.connect(func(): get_tree().quit())
 	
 	_construir_painel_orcamento()
 

@@ -1,4 +1,4 @@
-# game_manager.gd - Colisões Físicas, Fila de Lançamento e Sandbox Pós-Vitória
+# game_manager.gd - Multas Ambientais e Reaproveitamento de Madeira
 extends Node2D
 
 # --- CONFIGURAÇÕES GERAIS E EXPORTS ---
@@ -28,7 +28,7 @@ var astar = AStar2D.new()
 var trens_ativos = {}
 var jogo_perdido: bool = false
 var fase_concluida := false
-var jogo_infinito := false # Permite continuar jogando após vencer a fase
+var jogo_infinito := false 
 var nivel_atual: int = 1
 var ultima_pos_pincel: Vector2i = Vector2i(-1, -1)
 var categoria_atual = "TRILHOS"
@@ -44,6 +44,10 @@ var verba_trens: float = 100.0
 var limite_seguro_vias: float = 50.0 
 var trilhos_quebrados = [] 
 var dinheiro: int = 2000 
+
+# --- GESTÃO AMBIENTAL (NOVO) ---
+var custo_multa_arvore: int = 50
+var madeira_construcao: int = 0
 
 # --- TEMPO ---
 var tempo_fase: float = 0.0
@@ -84,17 +88,15 @@ func _process(delta):
 			if tempo_semana >= duracao_semana:
 				_gerar_relatorio_semanal()
 			
-			# --- LANÇAMENTO DE TRENS COM DELAY ---
 			if fila_trens_pendentes.size() > 0:
 				tempo_prox_trem -= delta
 				if tempo_prox_trem <= 0.0:
 					var trem_data = fila_trens_pendentes.pop_front()
 					_spawnar_trem(trem_data.pts, trem_data.id, trem_data.carga, trem_data.o, trem_data.d)
-					tempo_prox_trem = 2.0 # 2 segundos de intervalo
+					tempo_prox_trem = 2.0
 			
 			_processar_movimento_trens(delta)
 			
-			# --- VERIFICAÇÃO DE COLISÕES FÍSICAS ---
 			if ignorar_colisao_timer > 0:
 				ignorar_colisao_timer -= delta
 			else:
@@ -131,7 +133,6 @@ func _setup_dialogos():
 	popup_vitoria.title = "VITÓRIA!"; popup_vitoria.ok_button_text = "Próxima Fase"; popup_vitoria.cancel_button_text = "Continuar"
 	popup_vitoria.process_mode = Node.PROCESS_MODE_ALWAYS
 	
-	# Eventos do Popup de Vitória atualizados
 	popup_vitoria.confirmed.connect(func():
 		get_tree().paused = false
 		_avancar_fase()
@@ -162,7 +163,7 @@ func _setup_dialogos():
 		btn_dev.pressed.connect(func():
 			jogo_perdido = false
 			get_tree().paused = false
-			ignorar_colisao_timer = 3.0 # Ficam intangíveis por 3s
+			ignorar_colisao_timer = 3.0
 			popup_game_over.hide()
 		)
 	
@@ -242,7 +243,6 @@ func _abrir_sub_menu(cat):
 	for n in sub_menu_container.get_children(): n.queue_free()
 	for id in categorias[cat]:
 		if id == 24: continue 
-		
 		var btn = Button.new(); btn.text = nomes_tiles[id]; btn.custom_minimum_size = Vector2(120, 35)
 		btn.pressed.connect(_selecionar_ferramenta.bind(id)); sub_menu_container.add_child(btn)
 
@@ -259,17 +259,61 @@ func _atualizar_status_bar():
 		for k in metas.keys():
 			if metas[k] > 0: string_metas += k.left(3) + ": " + str(estoque[k]) + "/" + str(metas[k]) + " | "
 		var status_texto = "PLAY" if not get_tree().paused else "PLANEJAMENTO"
-		info_label.text = "[%s] T: %s | $ %d | FASE %d | ATIVO: %s | %s" % [status_texto, _get_tempo_formatado(), dinheiro, nivel_atual, nomes_tiles[estado_selecionado], string_metas]
+		
+		# --- VISUALIZAÇÃO DA MADEIRA DE CONSTRUÇÃO NO STATUS ---
+		var madeira_texto = ""
+		if madeira_construcao > 0: madeira_texto = " (Madeira: " + str(madeira_construcao) + ")"
+		
+		info_label.text = "[%s] T: %s | $ %d%s | FASE %d | ATIVO: %s | %s" % [status_texto, _get_tempo_formatado(), dinheiro, madeira_texto, nivel_atual, nomes_tiles[estado_selecionado], string_metas]
 
 # ==========================================
 # LÓGICA DE JOGO, PROGRESSÃO E ECONOMIA
 # ==========================================
+
+# --- NOVO: LÓGICA DE MULTA AMBIENTAL ---
+func cortar_arvore(pos_tela: Vector2) -> bool:
+	if dinheiro < custo_multa_arvore:
+		if pos_tela != Vector2.ZERO: _spawn_floating_text(pos_tela, "SEM VERBA!", Color.RED)
+		return false
+
+	dinheiro -= custo_multa_arvore
+	madeira_construcao += 1
+
+	if pos_tela != Vector2.ZERO:
+		_spawn_floating_text(pos_tela, "MULTA: -$" + str(custo_multa_arvore), Color.RED)
+		_spawn_floating_text(pos_tela + Vector2(0, 25), "+1 MADEIRA (P/ TRILHOS)", Color("#8b5a2b"))
+
+	custo_multa_arvore += 50 # Aumenta a multa para a próxima árvore
+	_atualizar_status_bar()
+	return true
+
+# --- ATUALIZADO: ABATIMENTO DE CUSTOS COM MADEIRA ---
 func gastar_dinheiro(id_ferramenta, pos_tela: Vector2 = Vector2.ZERO) -> bool:
 	var custo = custos_construcao.get(id_ferramenta, 0)
 	if custo == 0: return true
-	if dinheiro < custo: return false
-	dinheiro -= custo; _atualizar_status_bar()
-	if pos_tela != Vector2.ZERO: _spawn_floating_text(pos_tela, "- $" + str(custo), Color.RED)
+	
+	var custo_final = custo
+	var usou_madeira = false
+
+	# Se for trilho ou estrutura, usa a madeira para ganhar $10 de desconto na obra
+	if id_ferramenta in [3, 4, 18, 19, 20, 21, 5, 6, 7, 23, 24, 12, 13, 15, 16] and madeira_construcao > 0:
+		var desconto = 10
+		if custo_final < 10: desconto = custo_final
+		custo_final -= desconto
+		madeira_construcao -= 1
+		usou_madeira = true
+
+	if dinheiro < custo_final: return false
+
+	dinheiro -= custo_final
+	_atualizar_status_bar()
+
+	if pos_tela != Vector2.ZERO:
+		if usou_madeira:
+			_spawn_floating_text(pos_tela + Vector2(0, 20), "-1 MADEIRA", Color("#8b5a2b"))
+		if custo_final > 0:
+			_spawn_floating_text(pos_tela, "- $" + str(custo_final), Color.RED)
+
 	return true
 
 func gastar_dinheiro_especifico(valor: int, pos_tela: Vector2) -> bool:
@@ -376,6 +420,10 @@ func _iniciar_fase(num):
 	tempo_fase = 0.0; tempo_semana = 0.0; semana_atual = 1; receita_semanal = 0
 	dinheiro = 2000 + (num * 500)
 	
+	# Reseta as multas e a madeira ao trocar de fase
+	custo_multa_arvore = 50
+	madeira_construcao = 0
+	
 	trilhos_quebrados.clear()
 	fila_trens_pendentes.clear()
 	tempo_prox_trem = 0.0
@@ -393,20 +441,18 @@ func _iniciar_fase(num):
 	_atualizar_status_bar()
 
 func _checar_vitoria():
-	if jogo_infinito: return # Evita checar se o jogador já decidiu continuar livremente
+	if jogo_infinito: return
 	
 	var tem_metas = false
 	var ok = true
-	
 	for r in metas.keys(): 
 		if metas[r] > 0:
 			tem_metas = true
-			if estoque[r] < metas[r]: 
-				ok = false
+			if estoque[r] < metas[r]: ok = false
 				
 	if tem_metas and ok and not fase_concluida: 
 		fase_concluida = true
-		get_tree().paused = true # Pausa fisicamente o jogo para a comemoração
+		get_tree().paused = true 
 		popup_vitoria.dialog_text = "Fase concluída em %s!" % _get_tempo_formatado()
 		popup_vitoria.popup_centered()
 
@@ -608,7 +654,6 @@ func _processar_movimento_trens(delta):
 					_atualizar_status_bar()
 					_checar_vitoria()
 
-# --- VERIFICAÇÃO DE COLISÕES REAIS ---
 func _verificar_colisoes():
 	var trens_lista = trens_ativos.values()
 	for i in range(trens_lista.size()):

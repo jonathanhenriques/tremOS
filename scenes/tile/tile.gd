@@ -1,4 +1,4 @@
-# tile.gd - Proteção Dinâmica, Modo Dev, Borracha Fluida e Estações Auto-Orientadas
+# tile.gd - Multa Ambiental, Toco de Madeira e Semáforos
 extends ColorRect
 
 # --- VARIÁVEIS DE ESTADO E REFERÊNCIAS ---
@@ -64,7 +64,7 @@ func get_grid_pos() -> Vector2i:
 	return Vector2i(pos_x, pos_y)
 
 # ==========================================
-# LÓGICA DE INTERAÇÃO E CHAVES
+# LÓGICA DE INTERAÇÃO (INPUT)
 # ==========================================
 func _gui_input(event):
 	if event is InputEventMouseButton and event.pressed:
@@ -142,11 +142,14 @@ func _apagar_tile():
 		
 	var pos_tela = Vector2(pos_x * 100 + 25, pos_y * 100)
 	
+	# --- NOVO: INVOCA A GESTÃO AMBIENTAL DO GAME MANAGER ---
 	if estado_atual == 9 and not arvore_cortada:
-		gm_ref.gastar_dinheiro_especifico(50, pos_tela)
-		arvore_cortada = true
-		queue_redraw()
+		if gm_ref.has_method("cortar_arvore"):
+			if gm_ref.cortar_arvore(pos_tela):
+				arvore_cortada = true
+				queue_redraw()
 		return
+	# --------------------------------------------------------
 		
 	if estado_atual != base_bioma:
 		if gm_ref.trilhos_quebrados.has(Vector2i(pos_x, pos_y)): 
@@ -219,7 +222,6 @@ func _aplicar_estado():
 	gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual)
 	queue_redraw()
 	
-	# Força as estações vizinhas a se re-orientarem
 	var ds = [Vector2i(0,1), Vector2i(0,-1), Vector2i(1,0), Vector2i(-1,0)]
 	for d in ds:
 		var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
@@ -277,9 +279,8 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 	if estado == 23 or estado == 24: 
 		draw_rect(Rect2(40, 15, 20, 15) if estado==23 else Rect2(15, 40, 15, 20), c); draw_circle(Vector2(50, 22) if estado==23 else Vector2(22, 50), 5, Color(0, 1, 0, alpha) if semaforo_aberto else Color(1, 0, 0, alpha))
 	
-	# --- ESTAÇÕES AUTO-ORIENTADAS ---
 	if estado in [17, 8]: 
-		var dir_conexao = Vector2i(0, 1) # Padrão: plataforma para baixo
+		var dir_conexao = Vector2i(0, 1) 
 		var d_list = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]
 		for d in d_list:
 			var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
@@ -287,12 +288,11 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 				dir_conexao = d
 				break
 		
-		# Define o lado onde a plataforma será desenhada
 		var plat_rect = Rect2(-5, 95, 110, 20)
-		if dir_conexao == Vector2i(0, -1): plat_rect = Rect2(-5, -15, 110, 20) # Cima
-		elif dir_conexao == Vector2i(0, 1): plat_rect = Rect2(-5, 95, 110, 20) # Baixo
-		elif dir_conexao == Vector2i(-1, 0): plat_rect = Rect2(-15, -5, 20, 110) # Esquerda
-		elif dir_conexao == Vector2i(1, 0): plat_rect = Rect2(95, -5, 20, 110) # Direita
+		if dir_conexao == Vector2i(0, -1): plat_rect = Rect2(-5, -15, 110, 20) 
+		elif dir_conexao == Vector2i(0, 1): plat_rect = Rect2(-5, 95, 110, 20) 
+		elif dir_conexao == Vector2i(-1, 0): plat_rect = Rect2(-15, -5, 20, 110) 
+		elif dir_conexao == Vector2i(1, 0): plat_rect = Rect2(95, -5, 20, 110) 
 
 		var cor_base = Color(1, 0, 1, alpha) if estado == 17 else Color(1, 0.84, 0, alpha)
 		var rect_gigante = Rect2(-5, -5, 110, 110)
@@ -305,11 +305,18 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 		
 		var texto = "CENTRAL" if estado == 17 else "TEM " + gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "N/A")
 		draw_string(font, Vector2(55, 50), texto, HORIZONTAL_ALIGNMENT_CENTER, -1, 16 if estado == 17 else 18, c_white if estado == 17 else c)
-	# --------------------------------
 	
+	# --- NOVO VISUAL PARA ÁRVORES E TOCOS ---
 	if estado == 9: 
-		if arvore_cortada: draw_circle(Vector2(50, 50), 25, Color(0.82, 0.7, 0.55, alpha))
-		if not arvore_cortada: draw_colored_polygon(PackedVector2Array([Vector2(50, 15), Vector2(85, 85), Vector2(15, 85)]), Color(0.13, 0.54, 0.13, alpha))
+		if arvore_cortada: 
+			# Desenha o Tronco/Toco Serrado
+			draw_rect(Rect2(40, 50, 20, 30), Color("#5c3a21", alpha))
+			# Topo do tronco (anéis da madeira)
+			draw_circle(Vector2(50, 50), 10, Color("#d2b48c", alpha))
+		if not arvore_cortada: 
+			draw_colored_polygon(PackedVector2Array([Vector2(50, 15), Vector2(85, 85), Vector2(15, 85)]), Color(0.13, 0.54, 0.13, alpha))
+	# ----------------------------------------
+	
 	if estado == 10: draw_rect(Rect2(25, 35, 50, 30), Color(0.5, 0.5, 0.5, alpha))
 
 func _draw():

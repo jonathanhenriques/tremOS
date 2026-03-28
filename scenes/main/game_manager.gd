@@ -1,4 +1,4 @@
-# game_manager.gd - Cargas Visuais nos Vagões, Look-Ahead e Pincel Definitivo
+# game_manager.gd - Colisões Físicas, Fila de Lançamento e Game Over
 extends Node2D
 
 # --- CONFIGURAÇÕES GERAIS E EXPORTS ---
@@ -6,7 +6,7 @@ extends Node2D
 @export var tile_size: int = 100
 @export var velocidade_jogo: float = 1.0
 
-@export var modo_dev: bool = true # Ativa abas de Biomas/Estruturas e permite apagar terreno
+@export var modo_dev: bool = true # Ativa abas de Biomas/Estruturas e botão Continuar no Game Over
 
 # --- REFERÊNCIAS E NODES ---
 var tile_scene = preload("res://scenes/tile/tile.tscn")
@@ -27,10 +27,13 @@ var estado_selecionado = 22 # Inicia no Pincel Mágico
 var astar = AStar2D.new()
 var trens_ativos = {}
 var jogo_perdido: bool = false
-var fase_concluida := false
-var nivel_atual: int = 1
 var ultima_pos_pincel: Vector2i = Vector2i(-1, -1)
 var categoria_atual = "TRILHOS"
+
+# --- FILA DE TRENS E COLISÕES ---
+var fila_trens_pendentes = []
+var tempo_prox_trem: float = 0.0
+var ignorar_colisao_timer: float = 0.0
 
 # --- ORÇAMENTO E DESASTRES ---
 var verba_vias: float = 100.0 
@@ -47,9 +50,12 @@ var semana_atual: int = 1
 var receita_semanal: int = 0 
 
 # --- DICIONÁRIOS E RECURSOS ---
+var fase_concluida := false
+var nivel_atual: int = 1
 var estoque = {"LEITE": 0, "MADEIRA": 0, "TRIGO": 0, "ACO": 0, "CARVAO": 0}
 var metas = {"LEITE": 0, "MADEIRA": 0, "TRIGO": 0, "ACO": 0, "CARVAO": 0}
 var recompensas = {"LEITE": 200, "MADEIRA": 150, "TRIGO": 180, "ACO": 300, "CARVAO": 250}
+var cores_carga = {"LEITE": Color.WHITE, "MADEIRA": Color("#8b5a2b"), "TRIGO": Color("#f5deb3"), "ACO": Color("#a9a9a9"), "CARVAO": Color("#2f4f4f")}
 var custos_construcao = {3: 10, 4: 10, 18: 15, 19: 15, 20: 15, 21: 15, 5: 30, 6: 40, 7: 50, 12: 100, 13: 100, 15: 150, 16: 150, 23: 50, 24: 50}
 var estacoes_oferta = {} 
 
@@ -77,7 +83,21 @@ func _process(delta):
 			if tempo_semana >= duracao_semana:
 				_gerar_relatorio_semanal()
 			
+			# --- LANÇAMENTO DE TRENS COM DELAY ---
+			if fila_trens_pendentes.size() > 0:
+				tempo_prox_trem -= delta
+				if tempo_prox_trem <= 0.0:
+					var trem_data = fila_trens_pendentes.pop_front()
+					_spawnar_trem(trem_data.pts, trem_data.id, trem_data.carga, trem_data.o, trem_data.d)
+					tempo_prox_trem = 2.0 # 2 segundos de intervalo de saída da estação
+			
 			_processar_movimento_trens(delta)
+			
+			# --- VERIFICAÇÃO DE COLISÕES FÍSICAS ---
+			if ignorar_colisao_timer > 0:
+				ignorar_colisao_timer -= delta
+			else:
+				_verificar_colisoes()
 			
 		_atualizar_status_bar()
 		
@@ -121,16 +141,20 @@ func _setup_dialogos():
 	popup_game_over = ConfirmationDialog.new()
 	add_child(popup_game_over)
 	popup_game_over.title = "💥 COLISÃO FERROVIÁRIA! 💥"
+	popup_game_over.dialog_text = "Dois trens colidiram na sua malha!\n\nVocê deve planejar desvios, cruzamentos e semáforos para evitar acidentes."
 	popup_game_over.ok_button_text = "Reiniciar Fase"
 	popup_game_over.cancel_button_text = "Abandonar Jogo"
 	popup_game_over.process_mode = Node.PROCESS_MODE_ALWAYS
 	
-	var btn_dev = popup_game_over.add_button("Ignorar e Continuar", false, "continuar_dev")
-	btn_dev.pressed.connect(func():
-		jogo_perdido = false
-		get_tree().paused = false
-		popup_game_over.hide()
-	)
+	# Só adiciona o botão de continuar (trapaça) se estiver no modo de desenvolvimento
+	if modo_dev:
+		var btn_dev = popup_game_over.add_button("Modo Dev: Ignorar", false, "continuar_dev")
+		btn_dev.pressed.connect(func():
+			jogo_perdido = false
+			get_tree().paused = false
+			ignorar_colisao_timer = 3.0 # Ficam intangíveis por 3s para se soltarem
+			popup_game_over.hide()
+		)
 	
 	popup_game_over.confirmed.connect(func(): _iniciar_fase(nivel_atual))
 	popup_game_over.canceled.connect(func(): get_tree().quit())
@@ -337,8 +361,14 @@ func _iniciar_nova_semana():
 func _iniciar_fase(num):
 	get_tree().paused = false
 	fase_concluida = false; tempo_fase = 0.0; tempo_semana = 0.0; semana_atual = 1; receita_semanal = 0
+	jogo_perdido = false
 	dinheiro = 2000 + (num * 500)
+	
 	trilhos_quebrados.clear()
+	fila_trens_pendentes.clear()
+	tempo_prox_trem = 0.0
+	ignorar_colisao_timer = 0.0
+	
 	for k in estoque.keys(): estoque[k] = 0; metas[k] = 0
 	estacoes_oferta.clear(); astar.clear()
 	for id in trens_ativos.keys(): if is_instance_valid(trens_ativos[id]): trens_ativos[id].queue_free()
@@ -429,44 +459,39 @@ func _tem_saida(tipo, dir) -> bool:
 	return false
 
 # ==========================================
-# FÍSICA DE TRENS, CARGAS E SPAWN
+# FÍSICA DE TRENS, CARGAS E COLISÕES
 # ==========================================
-
-# --- NOVO: GERADOR DE VISUAL DA CARGA ---
 func _atualizar_visual_carga(vagao_node: ColorRect, carga: String, vazio: bool):
-	# Limpa qualquer visual anterior
 	for c in vagao_node.get_children():
 		c.queue_free()
-	
 	if vazio:
 		vagao_node.color = Color(0.3, 0.3, 0.3)
 		return
 		
-	# Fundo da caçamba levemente mais escuro para a carga destacar
 	vagao_node.color = Color(0.2, 0.2, 0.2) 
 	
-	if carga == "LEITE": # Tanques brancos
+	if carga == "LEITE": 
 		for i in range(3):
 			var c = ColorRect.new(); c.color = Color.WHITE; c.size = Vector2(10, 20)
 			c.position = Vector2(4 + i*12, 5)
 			vagao_node.add_child(c)
-	elif carga == "MADEIRA": # Toras marrons
+	elif carga == "MADEIRA": 
 		for i in range(3):
 			var c = ColorRect.new(); c.color = Color("#8b5a2b"); c.size = Vector2(32, 6)
 			c.position = Vector2(4, 4 + i*8)
 			vagao_node.add_child(c)
-	elif carga == "TRIGO": # Sacos de grãos empilhados
+	elif carga == "TRIGO": 
 		for i in range(2):
 			for j in range(3):
 				var c = ColorRect.new(); c.color = Color("#f5deb3"); c.size = Vector2(8, 10)
 				c.position = Vector2(4 + j*12, 4 + i*12)
 				vagao_node.add_child(c)
-	elif carga == "ACO": # Vigas de aço longas
+	elif carga == "ACO": 
 		for i in range(2):
 			var c = ColorRect.new(); c.color = Color("#a9a9a9"); c.size = Vector2(34, 10)
 			c.position = Vector2(3, 4 + i*12)
 			vagao_node.add_child(c)
-	elif carga == "CARVAO": # Pedaços de carvão espalhados
+	elif carga == "CARVAO": 
 		var posicoes = [Vector2(4,4), Vector2(16,4), Vector2(28,4), Vector2(10,11), Vector2(22,11), Vector2(4,18), Vector2(16,18), Vector2(28,18)]
 		for p in posicoes:
 			var c = ColorRect.new(); c.color = Color("#111111"); c.size = Vector2(8, 8)
@@ -487,7 +512,6 @@ func _processar_movimento_trens(delta):
 		var alvo = pts[idx]
 		var alvo_grid = Vector2i(int(alvo.x / 100), int(alvo.y / 100))
 		
-		# --- LÓGICA DE FREIO ANTECIPADO E PROTEÇÃO DE CRUZAMENTO ---
 		var parar_agora = false
 		
 		var tile_alvo = _get_tile_at(alvo_grid.x, alvo_grid.y)
@@ -527,7 +551,6 @@ func _processar_movimento_trens(delta):
 		if parar_agora:
 			if t.position.distance_to(alvo) <= 80.0: 
 				continue 
-		# -----------------------------------------------------
 
 		var vel = 250.0 * (verba_trens / 100.0) * (verba_vias / 100.0)
 
@@ -545,7 +568,6 @@ func _processar_movimento_trens(delta):
 				else: 
 					t.set_meta("indo", false)
 					if pts.size() > 1: t.set_meta("indice_alvo", idx - 1)
-					# --- O VAGÃO ENCHE AQUI ---
 					_atualizar_visual_carga(t.get_node("Vagao"), carga, false)
 			else:
 				if idx > 0:
@@ -553,7 +575,6 @@ func _processar_movimento_trens(delta):
 				else: 
 					t.set_meta("indo", true)
 					if pts.size() > 1: t.set_meta("indice_alvo", 1)
-					# --- O VAGÃO ESVAZIA AQUI ---
 					_atualizar_visual_carga(t.get_node("Vagao"), carga, true)
 					
 					estoque[carga] += 1
@@ -562,6 +583,24 @@ func _processar_movimento_trens(delta):
 					_spawn_floating_text(t.position, "+ $" + str(recompensas[carga]), Color.GREEN)
 					_atualizar_status_bar()
 					_checar_vitoria()
+
+# --- VERIFICAÇÃO DE COLISÕES REAIS ---
+func _verificar_colisoes():
+	var trens_lista = trens_ativos.values()
+	for i in range(trens_lista.size()):
+		var t1 = trens_lista[i]
+		if not is_instance_valid(t1): continue
+		
+		for j in range(i + 1, trens_lista.size()):
+			var t2 = trens_lista[j]
+			if not is_instance_valid(t2): continue
+
+			# Trens medem 60x40. Se a distância entre o centro deles for menor que 50px, é acidente na certa.
+			if t1.position.distance_to(t2.position) < 50.0:
+				jogo_perdido = true
+				get_tree().paused = true
+				popup_game_over.popup_centered()
+				return
 
 func tentar_lancar_trem():
 	if get_tree().paused == true: return 
@@ -577,7 +616,14 @@ func tentar_lancar_trem():
 		if p_ids.size() > 1:
 			var pts = []; for pid in p_ids: pts.append(astar.get_point_position(pid))
 			var id = "T_%d_%d_%d" % [d.x, d.y, Time.get_ticks_msec()]
-			_spawnar_trem(pts, id, estacoes_oferta.get(d, "LEITE"), principal, d)
+			
+			# ADICIONA NA FILA EM VEZ DE LANÇAR IMEDIATAMENTE
+			fila_trens_pendentes.append({
+				"pts": pts, "id": id, "carga": estacoes_oferta.get(d, "LEITE"), "o": principal, "d": d
+			})
+			# Dá um feedback visual na estação para o jogador saber que agendou a saída
+			var px = principal.x * 100 + 50; var py = principal.y * 100 + 50
+			_spawn_floating_text(Vector2(px, py), "AGENDADO!", Color.YELLOW)
 
 func _spawnar_trem(pontos, id, carga, o, d):
 	var t = Node2D.new(); t.name = id; t.z_index = 20; add_child(t); trens_ativos[id] = t

@@ -1,4 +1,4 @@
-# game_manager.gd - Modo Dev, Semáforo Oculto e Freio Antecipado
+# game_manager.gd - Cargas Visuais nos Vagões, Look-Ahead e Pincel Definitivo
 extends Node2D
 
 # --- CONFIGURAÇÕES GERAIS E EXPORTS ---
@@ -50,7 +50,6 @@ var receita_semanal: int = 0
 var estoque = {"LEITE": 0, "MADEIRA": 0, "TRIGO": 0, "ACO": 0, "CARVAO": 0}
 var metas = {"LEITE": 0, "MADEIRA": 0, "TRIGO": 0, "ACO": 0, "CARVAO": 0}
 var recompensas = {"LEITE": 200, "MADEIRA": 150, "TRIGO": 180, "ACO": 300, "CARVAO": 250}
-var cores_carga = {"LEITE": Color.WHITE, "MADEIRA": Color("#8b5a2b"), "TRIGO": Color("#f5deb3"), "ACO": Color("#a9a9a9"), "CARVAO": Color("#2f4f4f")}
 var custos_construcao = {3: 10, 4: 10, 18: 15, 19: 15, 20: 15, 21: 15, 5: 30, 6: 40, 7: 50, 12: 100, 13: 100, 15: 150, 16: 150, 23: 50, 24: 50}
 var estacoes_oferta = {} 
 
@@ -405,7 +404,6 @@ func _reconstruir_malha():
 					var tb = matriz_mapa[nx][ny]
 					if _eh_trilho_ou_estacao(tb) and not trilhos_quebrados.has(Vector2i(nx,ny)): 
 						_tentar_conectar(x,y,ta,nx,ny,tb,d)
-	_verificar_integridade_trens()
 
 func _tentar_conectar(ax, ay, ta, bx, by, tb, d):
 	if not _tem_saida(ta, d) or not _tem_saida(tb, -d): return
@@ -431,8 +429,49 @@ func _tem_saida(tipo, dir) -> bool:
 	return false
 
 # ==========================================
-# FÍSICA DE TRENS E SPAWN
+# FÍSICA DE TRENS, CARGAS E SPAWN
 # ==========================================
+
+# --- NOVO: GERADOR DE VISUAL DA CARGA ---
+func _atualizar_visual_carga(vagao_node: ColorRect, carga: String, vazio: bool):
+	# Limpa qualquer visual anterior
+	for c in vagao_node.get_children():
+		c.queue_free()
+	
+	if vazio:
+		vagao_node.color = Color(0.3, 0.3, 0.3)
+		return
+		
+	# Fundo da caçamba levemente mais escuro para a carga destacar
+	vagao_node.color = Color(0.2, 0.2, 0.2) 
+	
+	if carga == "LEITE": # Tanques brancos
+		for i in range(3):
+			var c = ColorRect.new(); c.color = Color.WHITE; c.size = Vector2(10, 20)
+			c.position = Vector2(4 + i*12, 5)
+			vagao_node.add_child(c)
+	elif carga == "MADEIRA": # Toras marrons
+		for i in range(3):
+			var c = ColorRect.new(); c.color = Color("#8b5a2b"); c.size = Vector2(32, 6)
+			c.position = Vector2(4, 4 + i*8)
+			vagao_node.add_child(c)
+	elif carga == "TRIGO": # Sacos de grãos empilhados
+		for i in range(2):
+			for j in range(3):
+				var c = ColorRect.new(); c.color = Color("#f5deb3"); c.size = Vector2(8, 10)
+				c.position = Vector2(4 + j*12, 4 + i*12)
+				vagao_node.add_child(c)
+	elif carga == "ACO": # Vigas de aço longas
+		for i in range(2):
+			var c = ColorRect.new(); c.color = Color("#a9a9a9"); c.size = Vector2(34, 10)
+			c.position = Vector2(3, 4 + i*12)
+			vagao_node.add_child(c)
+	elif carga == "CARVAO": # Pedaços de carvão espalhados
+		var posicoes = [Vector2(4,4), Vector2(16,4), Vector2(28,4), Vector2(10,11), Vector2(22,11), Vector2(4,18), Vector2(16,18), Vector2(28,18)]
+		for p in posicoes:
+			var c = ColorRect.new(); c.color = Color("#111111"); c.size = Vector2(8, 8)
+			c.position = p
+			vagao_node.add_child(c)
 
 func _processar_movimento_trens(delta):
 	for id in trens_ativos.keys():
@@ -451,12 +490,10 @@ func _processar_movimento_trens(delta):
 		# --- LÓGICA DE FREIO ANTECIPADO E PROTEÇÃO DE CRUZAMENTO ---
 		var parar_agora = false
 		
-		# 1. Checa se o próximo tile que o trem vai entrar é um semáforo fechado
 		var tile_alvo = _get_tile_at(alvo_grid.x, alvo_grid.y)
 		if tile_alvo and tile_alvo.estado_atual in [23, 24] and not tile_alvo.semaforo_aberto:
 			parar_agora = true
 		
-		# 2. Checa se o caminho astar foi quebrado no passo IMEDIATO
 		if grid_pos != alvo_grid and not parar_agora:
 			var id_atual = grid_pos.x + grid_pos.y * tamanho_mapa
 			var id_alvo = alvo_grid.x + alvo_grid.y * tamanho_mapa
@@ -468,8 +505,6 @@ func _processar_movimento_trens(delta):
 			if not astar.are_points_connected(id_atual, id_alvo):
 				parar_agora = true
 				
-		# 3. NOVO: "Não bloqueie o cruzamento" (Look-ahead duplo)
-		# Se o alvo for uma chave ou cruzamento, o trem só entra se a SAÍDA dela também estiver livre!
 		if not parar_agora and tile_alvo and tile_alvo.estado_atual in [5, 6, 7]:
 			var next_idx = idx + 1 if indo else idx - 1
 			if next_idx >= 0 and next_idx < pts.size():
@@ -489,7 +524,6 @@ func _processar_movimento_trens(delta):
 					if not astar.are_points_connected(id_alvo_nav, id_prox):
 						parar_agora = true
 				
-		# Aplica o freio com o dobro da distância anterior (para antes de invadir o tile da chave)
 		if parar_agora:
 			if t.position.distance_to(alvo) <= 80.0: 
 				continue 
@@ -511,26 +545,23 @@ func _processar_movimento_trens(delta):
 				else: 
 					t.set_meta("indo", false)
 					if pts.size() > 1: t.set_meta("indice_alvo", idx - 1)
-					t.get_node("Vagao").color = cores_carga[carga]
+					# --- O VAGÃO ENCHE AQUI ---
+					_atualizar_visual_carga(t.get_node("Vagao"), carga, false)
 			else:
 				if idx > 0:
 					t.set_meta("indice_alvo", idx - 1)
 				else: 
 					t.set_meta("indo", true)
 					if pts.size() > 1: t.set_meta("indice_alvo", 1)
-					t.get_node("Vagao").color = Color(0.3, 0.3, 0.3)
+					# --- O VAGÃO ESVAZIA AQUI ---
+					_atualizar_visual_carga(t.get_node("Vagao"), carga, true)
+					
 					estoque[carga] += 1
 					dinheiro += recompensas[carga]
 					receita_semanal += recompensas[carga]
 					_spawn_floating_text(t.position, "+ $" + str(recompensas[carga]), Color.GREEN)
 					_atualizar_status_bar()
 					_checar_vitoria()
-					
-					
-					
-
-func _verificar_integridade_trens():
-	pass # O trem aguarda pacientemente bloqueios físicos.
 
 func tentar_lancar_trem():
 	if get_tree().paused == true: return 
@@ -574,7 +605,7 @@ func _spawnar_trem(pontos, id, carga, o, d):
 	t.position = pos_inicial
 
 # ==========================================
-# O PINCEL DEFINITIVO (AUTO-TILER) E SEMÁFORO INTELIGENTE
+# O PINCEL DEFINITIVO (AUTO-TILER)
 # ==========================================
 func _prever_pincel_magico(x, y) -> int:
 	var t = _get_tile_at(x, y)

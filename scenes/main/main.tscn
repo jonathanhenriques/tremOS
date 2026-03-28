@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://c66w0a8rsmhmy" path="res://scenes/main/camera_gestor.gd" id="1_hyk8p"]
 [ext_resource type="Script" uid="uid://duuufdamjugq0" path="res://scenes/main/grid.gd" id="1_ow5a4"]
-[ext_resource type="Script" uid="uid://yeh4qxrjvm6h" path="res://scenes/main/game_manager.gd" id="2_iuonh"]
+[ext_resource type="Script" uid="uid://debdg1qwpkd76" path="res://scenes/main/game_manager.gd" id="2_iuonh"]
 
 [node name="TremOS_Main" type="Node2D" unique_id=1195256865]
 

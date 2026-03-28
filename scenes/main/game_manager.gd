@@ -1,43 +1,52 @@
-# game_manager.gd - O Pincel Definitivo e Limpeza de UI
+# game_manager.gd - Modo Dev e Semáforo Oculto na UI
 extends Node2D
 
+# --- CONFIGURAÇÕES GERAIS E EXPORTS ---
 @export var tamanho_mapa: int = 20
 @export var tile_size: int = 100
 @export var velocidade_jogo: float = 1.0
 
+@export var modo_dev: bool = true # Ativa abas de Biomas/Estruturas e permite apagar terreno
+
+# --- REFERÊNCIAS E NODES ---
 var tile_scene = preload("res://scenes/tile/tile.tscn")
-var matriz_mapa = []
-var estado_selecionado = 22 # Agora o jogo começa direto no Pincel Mágico
-var astar = AStar2D.new()
-var trens_ativos = {}
+@onready var mapa_node = $"../Mapa"
+
 var info_label: Label
 var sub_menu_container: HBoxContainer
-var categoria_atual = "TRILHOS"
 var popup_confirmacao: ConfirmationDialog
 var popup_vitoria: ConfirmationDialog
 var popup_relatorio: AcceptDialog 
 var popup_orcamento: AcceptDialog
-
 var popup_game_over: ConfirmationDialog
-var jogo_perdido: bool = false
-var ultima_pos_pincel: Vector2i = Vector2i(-1, -1)
 var botao_pause: Button
+
+# --- VARIÁVEIS DE ESTADO E LÓGICA ---
+var matriz_mapa = []
+var estado_selecionado = 22 # Inicia no Pincel Mágico
+var astar = AStar2D.new()
+var trens_ativos = {}
+var jogo_perdido: bool = false
+var fase_concluida := false
+var nivel_atual: int = 1
+var ultima_pos_pincel: Vector2i = Vector2i(-1, -1)
+var categoria_atual = "TRILHOS"
 
 # --- ORÇAMENTO E DESASTRES ---
 var verba_vias: float = 100.0 
 var verba_trens: float = 100.0 
 var limite_seguro_vias: float = 50.0 
 var trilhos_quebrados = [] 
+var dinheiro: int = 2000 
 
+# --- TEMPO ---
 var tempo_fase: float = 0.0
 var tempo_semana: float = 0.0
 var duracao_semana: float = 30.0 
 var semana_atual: int = 1
 var receita_semanal: int = 0 
 
-var nivel_atual: int = 1
-var dinheiro: int = 2000 
-var fase_concluida := false
+# --- DICIONÁRIOS E RECURSOS ---
 var estoque = {"LEITE": 0, "MADEIRA": 0, "TRIGO": 0, "ACO": 0, "CARVAO": 0}
 var metas = {"LEITE": 0, "MADEIRA": 0, "TRIGO": 0, "ACO": 0, "CARVAO": 0}
 var recompensas = {"LEITE": 200, "MADEIRA": 150, "TRIGO": 180, "ACO": 300, "CARVAO": 250}
@@ -45,12 +54,14 @@ var cores_carga = {"LEITE": Color.WHITE, "MADEIRA": Color("#8b5a2b"), "TRIGO": C
 var custos_construcao = {3: 10, 4: 10, 18: 15, 19: 15, 20: 15, 21: 15, 5: 30, 6: 40, 7: 50, 12: 100, 13: 100, 15: 150, 16: 150, 23: 50, 24: 50}
 var estacoes_oferta = {} 
 
-# --- UI LIMPA (APOSENTADORIA DOS BOTÕES MANUAIS) ---
-var categorias = {"TRILHOS": [22, 7, 23, 24], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8]}
-var nomes_tiles = {0: "BORRACHA", 1: "SELEÇÃO", 2: "TERRA", 3: "TRILHO H", 4: "TRILHO V", 18: "┐ S-O", 19: "┘ N-O", 20: "└ N-L", 21: "┌ S-L", 5: "BIFURC. Y", 6: "CRUZAM. H", 7: "CHAVE", 17: "PRINCIPAL", 8: "ESTAÇÃO", 9: "ÁRVORE", 10: "PEDRA", 11: "ÁGUA", 14: "MONTANHA", 22: "PINCEL MÁGICO", 12: "PONTE H", 13: "PONTE V", 15: "TÚNEL H", 16: "TÚNEL V", 23: "SEMÁFORO H", 24: "SEMÁFORO V"}
+# --- UI LIMPA ---
+var categorias = {"TRILHOS": [22, 7, 23], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8]}
+var nomes_tiles = {0: "BORRACHA", 1: "SELEÇÃO", 2: "TERRA", 3: "TRILHO H", 4: "TRILHO V", 18: "┐ S-O", 19: "┘ N-O", 20: "└ N-L", 21: "┌ S-L", 5: "BIFURC. Y", 6: "CRUZAM. H", 7: "CHAVE", 17: "PRINCIPAL", 8: "ESTAÇÃO", 9: "ÁRVORE", 10: "PEDRA", 11: "ÁGUA", 14: "MONTANHA", 22: "PINCEL MÁGICO", 12: "PONTE H", 13: "PONTE V", 15: "TÚNEL H", 16: "TÚNEL V", 23: "SEMÁFORO", 24: "SEMÁFORO V"}
 
-@onready var mapa_node = $"../Mapa"
 
+# ==========================================
+# FUNÇÕES LIFECYCLE E UPDATE
+# ==========================================
 func _ready():
 	Engine.time_scale = velocidade_jogo
 	_criar_ui_sistema_soko()
@@ -75,10 +86,26 @@ func _process(delta):
 	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		ultima_pos_pincel = Vector2i(-1, -1)
 
-# --- SISTEMA DE DIÁLOGOS E UI ---
+func _input(event):
+	if event.is_action_pressed("ui_cancel") or (event is InputEventKey and event.pressed and event.keycode == KEY_P):
+		_alternar_pause()
+
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+			if get_viewport().get_mouse_position().x > 130:
+				var lista = categorias.get(categoria_atual, [])
+				if lista.size() > 1 and estado_selecionado in lista:
+					var idx = lista.find(estado_selecionado)
+					if event.button_index == MOUSE_BUTTON_WHEEL_UP: idx = (idx - 1 + lista.size()) % lista.size()
+					if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: idx = (idx + 1) % lista.size()
+					_selecionar_ferramenta(lista[idx]); get_viewport().set_input_as_handled()
+
+# ==========================================
+# SISTEMA DE DIÁLOGOS E UI
+# ==========================================
 func _setup_dialogos():
 	popup_confirmacao = ConfirmationDialog.new(); add_child(popup_confirmacao)
-	popup_confirmacao.title = "Aviso de Engenharia"; popup_confirmacao.dialog_text = "Deseja remover esta estação?"
+	popup_confirmacao.title = "Aviso de Engenharia"; popup_confirmacao.dialog_text = "Deseja remover esta estrutura?"
 	popup_confirmacao.process_mode = Node.PROCESS_MODE_ALWAYS
 	
 	popup_vitoria = ConfirmationDialog.new(); add_child(popup_vitoria)
@@ -160,8 +187,12 @@ func _criar_ui_sistema_soko():
 	for n in ["BORRACHA", "SELEÇÃO"]:
 		var b = Button.new(); b.text = n; b.custom_minimum_size = Vector2(110, 45); vbox.add_child(b)
 		b.pressed.connect(_selecionar_ferramenta.bind(0 if n=="BORRACHA" else 1))
+	
 	for cat in categorias.keys():
+		if not modo_dev and (cat == "BIOMAS" or cat == "ESTRUTURAS"):
+			continue
 		var btn = Button.new(); btn.text = cat; btn.custom_minimum_size = Vector2(110, 45); btn.pressed.connect(_abrir_sub_menu.bind(cat)); vbox.add_child(btn)
+	
 	_abrir_sub_menu("TRILHOS")
 
 func _alternar_pause():
@@ -196,7 +227,9 @@ func _atualizar_status_bar():
 		var status_texto = "PLAY" if not get_tree().paused else "PLANEJAMENTO"
 		info_label.text = "[%s] T: %s | $ %d | FASE %d | ATIVO: %s | %s" % [status_texto, _get_tempo_formatado(), dinheiro, nivel_atual, nomes_tiles[estado_selecionado], string_metas]
 
-# --- LÓGICA DE JOGO E ECONOMIA ---
+# ==========================================
+# LÓGICA DE JOGO, PROGRESSÃO E ECONOMIA
+# ==========================================
 func gastar_dinheiro(id_ferramenta, pos_tela: Vector2 = Vector2.ZERO) -> bool:
 	var custo = custos_construcao.get(id_ferramenta, 0)
 	if custo == 0: return true
@@ -226,20 +259,6 @@ func _spawn_floating_text(pos: Vector2, txt: String, col: Color):
 	tw.tween_property(l, "position", l.position + Vector2(0,-60), 1.0)
 	tw.parallel().tween_property(l, "modulate:a", 0.0, 1.0)
 	tw.tween_callback(l.queue_free)
-
-func _input(event):
-	if event.is_action_pressed("ui_cancel") or (event is InputEventKey and event.pressed and event.keycode == KEY_P):
-		_alternar_pause()
-
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
-			if get_viewport().get_mouse_position().x > 130:
-				var lista = categorias.get(categoria_atual, [])
-				if lista.size() > 1 and estado_selecionado in lista:
-					var idx = lista.find(estado_selecionado)
-					if event.button_index == MOUSE_BUTTON_WHEEL_UP: idx = (idx - 1 + lista.size()) % lista.size()
-					if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: idx = (idx + 1) % lista.size()
-					_selecionar_ferramenta(lista[idx]); get_viewport().set_input_as_handled()
 
 func _avancar_fase():
 	nivel_atual += 1
@@ -331,7 +350,15 @@ func _iniciar_fase(num):
 	if num == 3: _gerar_mapa_nivel_3()
 	_atualizar_status_bar()
 
-# --- MAPA E CONSTRUÇÃO ---
+func _checar_vitoria():
+	var ok = true
+	for r in metas.keys(): if metas[r] > 0 and estoque[r] < metas[r]: ok = false
+	if ok and not fase_concluida: 
+		fase_concluida = true; popup_vitoria.dialog_text = "Fase concluída em %s" % _get_tempo_formatado(); popup_vitoria.popup_centered()
+
+# ==========================================
+# MAPA E AStar2D
+# ==========================================
 func _criar_matriz_vazia():
 	matriz_mapa.clear()
 	for x in range(tamanho_mapa):
@@ -396,7 +423,9 @@ func _tem_saida(tipo, dir) -> bool:
 	if tipo in [5, 6, 7, 8, 17]: return true
 	return false
 
-# --- FÍSICA E MOVIMENTO FRAME A FRAME ---
+# ==========================================
+# FÍSICA DE TRENS E SPAWN
+# ==========================================
 func _processar_movimento_trens(delta):
 	for id in trens_ativos.keys():
 		var t = trens_ativos[id]
@@ -407,26 +436,22 @@ func _processar_movimento_trens(delta):
 		var indo = t.get_meta("indo")
 		var carga = t.get_meta("carga")
 
-		# VERIFICAÇÃO DE SEMÁFORO
 		var grid_pos = Vector2i(int(t.position.x / 100), int(t.position.y / 100))
 		var tile = _get_tile_at(grid_pos.x, grid_pos.y)
 		if tile and (tile.estado_atual == 23 or tile.estado_atual == 24):
 			if not tile.semaforo_aberto:
-				continue # Trem para imediatamente!
+				continue 
 
 		var alvo = pts[idx]
 		var vel = 250.0 * (verba_trens / 100.0) * (verba_vias / 100.0)
 
-		# Move o trem fisicamente em direção ao ponto AStar
 		t.position = t.position.move_toward(alvo, vel * delta)
 
-		# Lógica de Rotação (Para o Vagão sempre seguir atrás)
 		var prev_pos = t.get_meta("prev_pos", t.position)
 		if t.position.distance_squared_to(prev_pos) > 1.0:
 			t.rotation = prev_pos.angle_to_point(t.position)
 			t.set_meta("prev_pos", t.position)
 
-		# Se chegou no ponto alvo
 		if t.position.distance_to(alvo) < 1.0:
 			if indo:
 				if idx < pts.size() - 1:
@@ -506,7 +531,9 @@ func _spawnar_trem(pontos, id, carga, o, d):
 	t.set_meta("prev_pos", pos_inicial)
 	t.position = pos_inicial
 
-# --- O PINCEL DEFINITIVO (AUTO-TILER COM BIOMAS) ---
+# ==========================================
+# O PINCEL DEFINITIVO (AUTO-TILER) E SEMÁFORO INTELIGENTE
+# ==========================================
 func _prever_pincel_magico(x, y) -> int:
 	var t = _get_tile_at(x, y)
 	var bioma = 2
@@ -538,7 +565,6 @@ func _prever_pincel_magico(x, y) -> int:
 		if v[0].x != 0: tipo = 3
 		else: tipo = 4
 	
-	# Adaptação Inteligente para Pontes e Túneis
 	if bioma == 11: 
 		tipo = 12 if (tipo == 3 or tipo in [18,19,20,21,5,6]) else 13
 	elif bioma == 14: 
@@ -548,12 +574,9 @@ func _prever_pincel_magico(x, y) -> int:
 
 func aplicar_pincel_magico(x, y):
 	if x < 0 or x >= tamanho_mapa or y < 0 or y >= tamanho_mapa: return
-	
-	# Proteção: O pincel não sobrescreve a central, estações, pedras, chaves ou semáforos
 	if matriz_mapa[x][y] in [17, 8, 10, 7, 23, 24]: return 
 	
 	var t = _get_tile_at(x, y)
-	# Proteção: O pincel não corta árvore sozinho. O jogador deve usar a borracha antes!
 	if t and t.estado_atual == 9 and not t.arvore_cortada: return 
 	
 	var tipo = _prever_pincel_magico(x, y)
@@ -574,7 +597,6 @@ func aplicar_pincel_magico(x, y):
 		var ny = y + d.y
 		if nx >= 0 and nx < tamanho_mapa and ny >= 0 and ny < tamanho_mapa:
 			var tipo_vizinho = matriz_mapa[nx][ny]
-			# O Auto-Tiler agora atinge trilhos normais, pontes e túneis
 			if tipo_vizinho in [3, 4, 18, 19, 20, 21, 5, 6, 12, 13, 15, 16]:
 				var novo_tipo = _prever_pincel_magico(nx, ny)
 				if tipo_vizinho != novo_tipo:
@@ -587,12 +609,9 @@ func aplicar_pincel_magico(x, y):
 	_reconstruir_malha()
 	ultima_pos_pincel = Vector2i(x, y)
 
-func _checar_vitoria():
-	var ok = true
-	for r in metas.keys(): if metas[r] > 0 and estoque[r] < metas[r]: ok = false
-	if ok and not fase_concluida: 
-		fase_concluida = true; popup_vitoria.dialog_text = "Fase concluída em %s" % _get_tempo_formatado(); popup_vitoria.popup_centered()
-
+# ==========================================
+# GERAÇÃO DE NÍVEIS
+# ==========================================
 func _get_tile_at(x, y):
 	for t in mapa_node.get_children(): if t.has_method("get_grid_pos") and t.get_grid_pos() == Vector2i(x, y): return t
 	return null

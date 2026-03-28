@@ -1,4 +1,4 @@
-# tile.gd - Consertos, Bloqueios, Borracha Fluida e Auto-Tiler Visual
+# tile.gd - Proteção Dinâmica, Modo Dev, Borracha Fluida e Semáforo Inteligente
 extends ColorRect
 
 # --- VARIÁVEIS DE ESTADO E REFERÊNCIAS ---
@@ -17,7 +17,9 @@ var _icon_rect: TextureRect
 var _icon_fantasma: TextureRect
 var _tex_trilho = preload("res://assets/trilho.png")
 
-# --- FUNÇÕES CORE E DE CONFIGURAÇÃO ---
+# ==========================================
+# CONFIGURAÇÃO INICIAL E SINAIS
+# ==========================================
 func _ready():
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_entered.connect(func():
@@ -26,7 +28,7 @@ func _ready():
 			if gm_ref.estado_selecionado == 22: 
 				_update_brush()
 			elif gm_ref.estado_selecionado == 0: 
-				_apagar_tile() # Borracha de arraste ativada
+				_apagar_tile()
 			elif gm_ref.estado_selecionado != 1: 
 				_aplicar_estado()
 		queue_redraw()
@@ -61,7 +63,9 @@ func configurar(x, y, gm):
 func get_grid_pos() -> Vector2i: 
 	return Vector2i(pos_x, pos_y)
 
-# --- LÓGICA DE INTERAÇÃO (INPUT) ---
+# ==========================================
+# LÓGICA DE INTERAÇÃO (INPUT)
+# ==========================================
 func _gui_input(event):
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT:
@@ -80,10 +84,9 @@ func _gui_input(event):
 					queue_redraw()
 					return
 				
-				# --- INTERAÇÃO COM SEMÁFORO ---
 				if estado_atual in [23, 24]:
 					semaforo_aberto = not semaforo_aberto
-					queue_redraw() # O trem vai enxergar isso no próximo frame
+					queue_redraw() 
 					return
 				
 			if gm_ref.estado_selecionado == 0: 
@@ -97,7 +100,9 @@ func _gui_input(event):
 		if event.button_index == MOUSE_BUTTON_RIGHT: 
 			_apagar_tile()
 
-# --- MÉTODOS DE AÇÃO (CONSTRUÇÃO E DESTRUIÇÃO) ---
+# ==========================================
+# MÉTODOS DE AÇÃO (CONSTRUÇÃO/DESTRUIÇÃO)
+# ==========================================
 func _update_brush():
 	gm_ref.aplicar_pincel_magico(pos_x, pos_y)
 	queue_redraw()
@@ -107,14 +112,23 @@ func _update_brush():
 		if n: n.queue_redraw()
 
 func _apagar_tile():
-	if estado_atual == 17 or estado_atual == 8:
+	if estado_atual in [17, 8, 7, 23, 24]:
 		if not gm_ref.popup_confirmacao.visible:
+			var nome_item = "esta estrutura"
+			if estado_atual in [17, 8]: nome_item = "esta estação"
+			elif estado_atual == 7: nome_item = "esta chave"
+			elif estado_atual in [23, 24]: nome_item = "este semáforo"
+			
+			gm_ref.popup_confirmacao.dialog_text = "Deseja remover " + nome_item + "?"
 			gm_ref.popup_confirmacao.popup_centered()
-			if not gm_ref.popup_confirmacao.confirmed.is_connected(_confirmar_remocao): 
-				gm_ref.popup_confirmacao.confirmed.connect(_confirmar_remocao, CONNECT_ONE_SHOT)
+			
+			if gm_ref.popup_confirmacao.confirmed.is_connected(_confirmar_remocao):
+				gm_ref.popup_confirmacao.confirmed.disconnect(_confirmar_remocao)
+			gm_ref.popup_confirmacao.confirmed.connect(_confirmar_remocao)
 		return
 		
 	var pos_tela = Vector2(pos_x * 100 + 25, pos_y * 100)
+	
 	if estado_atual == 9 and not arvore_cortada:
 		gm_ref.gastar_dinheiro_especifico(50, pos_tela)
 		arvore_cortada = true
@@ -132,21 +146,49 @@ func _apagar_tile():
 		var ds = [Vector2i(0,1), Vector2i(0,-1), Vector2i(1,0), Vector2i(-1,0)]
 		for d in ds:
 			var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
-			if n and n.estado_atual in [3, 4, 18, 19, 20, 21, 5, 6]:
+			if n and n.estado_atual in [3, 4, 18, 19, 20, 21, 5, 6, 12, 13, 15, 16]:
 				var novo_tipo = gm_ref._prever_pincel_magico(n.pos_x, n.pos_y)
 				if n.estado_atual != novo_tipo:
 					gm_ref.matriz_mapa[n.pos_x][n.pos_y] = novo_tipo
 					n.estado_atual = novo_tipo
 				n.queue_redraw()
 		gm_ref._reconstruir_malha()
+		
+	elif gm_ref.modo_dev and base_bioma in [11, 14]:
+		base_bioma = 2
+		estado_atual = 2
+		gm_ref.atualizar_matriz(pos_x, pos_y, 2)
+		queue_redraw()
 
 func _confirmar_remocao(): 
 	estado_atual = base_bioma
 	gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual)
+	
+	var ds = [Vector2i(0,1), Vector2i(0,-1), Vector2i(1,0), Vector2i(-1,0)]
+	for d in ds:
+		var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
+		if n and n.estado_atual in [3, 4, 18, 19, 20, 21, 5, 6, 12, 13, 15, 16]:
+			var novo_tipo = gm_ref._prever_pincel_magico(n.pos_x, n.pos_y)
+			if n.estado_atual != novo_tipo:
+				gm_ref.matriz_mapa[n.pos_x][n.pos_y] = novo_tipo
+				n.estado_atual = novo_tipo
+			n.queue_redraw()
+	gm_ref._reconstruir_malha()
+	
 	queue_redraw()
+
+# --- NOVO: LÓGICA INTELIGENTE DO SEMÁFORO ---
+func _obter_semaforo_inteligente() -> int:
+	if estado_atual in [4, 13, 16]: return 24
+	if estado_atual in [3, 12, 15]: return 23
+	return 24 if gm_ref._prever_pincel_magico(pos_x, pos_y) == 4 else 23
 
 func _aplicar_estado():
 	var tool = gm_ref.estado_selecionado
+	
+	# Transforma o ID 23 no semáforo correto baseado no contexto
+	if tool == 23: tool = _obter_semaforo_inteligente()
+	
 	if estado_atual in [17, 8, 10] or tool == estado_atual: return 
 	if tool in [2, 11, 14]: base_bioma = tool
 	if tool in [12, 13] and base_bioma != 11: return
@@ -166,8 +208,9 @@ func _aplicar_estado():
 	gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual)
 	queue_redraw()
 
-# --- MÉTODOS VISUAIS E DESENHO ---
-
+# ==========================================
+# VISUAL E DESENHO
+# ==========================================
 func _desenhar_simbolo(estado, alpha, tex_node):
 	var c = Color(0, 0, 0, alpha); var c_white = Color(1, 1, 1, alpha); var font = get_theme_default_font(); var rect = Rect2(Vector2.ZERO, size)
 	if estado in [3, 12, 15, 23]: tex_node.texture = _tex_trilho; tex_node.rotation = 0; tex_node.modulate = Color(0.1, 0.1, 0.1, alpha)
@@ -239,5 +282,7 @@ func _draw():
 			if sel not in [0, 1]:
 				var prev = sel
 				if sel == 22: prev = gm_ref._prever_pincel_magico(pos_x, pos_y)
+				elif sel == 23: prev = _obter_semaforo_inteligente() # Mostra fantasma correto
+				
 				if prev != estado_atual: 
 					_desenhar_simbolo(prev, 0.4, _icon_fantasma)

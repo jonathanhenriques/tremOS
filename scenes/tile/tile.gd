@@ -1,4 +1,4 @@
-# tile.gd - Sentidos de Via e Símbolos Visuais
+# tile.gd - Conexão Direta em Estações (Removido Tilo 25)
 extends ColorRect
 
 # --- VARIÁVEIS DE ESTADO E REFERÊNCIAS ---
@@ -12,8 +12,6 @@ var gm_ref = null
 var index_chave: int = 0
 var arvore_cortada: bool = false
 var semaforo_aberto: bool = true 
-
-# NOVO: 0 = Duplo Sentido, 1 = Sentido Ida, 2 = Sentido Volta
 var sentido_via: int = 0 
 
 var _icon_rect: TextureRect
@@ -67,7 +65,7 @@ func get_grid_pos() -> Vector2i:
 	return Vector2i(pos_x, pos_y)
 
 # ==========================================
-# LÓGICA DE INTERAÇÃO (INPUT) E SENTIDOS
+# LÓGICA DE INTERAÇÃO E SENTIDOS
 # ==========================================
 func _gui_input(event):
 	if event is InputEventMouseButton and event.pressed:
@@ -87,7 +85,6 @@ func _gui_input(event):
 				elif estado_atual in [23, 24]:
 					semaforo_aberto = not semaforo_aberto
 					queue_redraw() 
-				# --- ALTERA O SENTIDO DO TRILHO ---
 				elif estado_atual in [3, 4, 18, 19, 20, 21, 12, 13, 15, 16]:
 					sentido_via = (sentido_via + 1) % 3
 					gm_ref._reconstruir_malha()
@@ -113,7 +110,7 @@ func is_direction_closed(d: Vector2i) -> bool:
 	var viz = []
 	for dir in d_list:
 		var n = gm_ref._get_tile_at(pos_x + dir.x, pos_y + dir.y)
-		if n and gm_ref._eh_trilho_ou_estacao(n.estado_atual): viz.append(dir)
+		if n and gm_ref._eh_trilho(n.estado_atual): viz.append(dir)
 	
 	if viz.size() > 2:
 		var fechado_idx = index_chave % viz.size()
@@ -121,7 +118,6 @@ func is_direction_closed(d: Vector2i) -> bool:
 			return true
 	return false
 
-# --- MATEMÁTICA DE ROTAS E SENTIDOS ---
 func _get_ports() -> Array:
 	if estado_atual in [3, 12, 15]: return [Vector2i(-1, 0), Vector2i(1, 0)]
 	if estado_atual in [4, 13, 16]: return [Vector2i(0, -1), Vector2i(0, 1)]
@@ -136,8 +132,8 @@ func permite_saida(d: Vector2i) -> bool:
 	var p = _get_ports()
 	if p.size() < 2: return gm_ref._tem_saida(estado_atual, d)
 	
-	if sentido_via == 1: return d == p[1] # Apenas liberta a saída 2
-	if sentido_via == 2: return d == p[0] # Apenas liberta a saída 1
+	if sentido_via == 1: return d == p[1] 
+	if sentido_via == 2: return d == p[0] 
 	return false
 
 func permite_entrada(port: Vector2i) -> bool:
@@ -145,8 +141,8 @@ func permite_entrada(port: Vector2i) -> bool:
 	var p = _get_ports()
 	if p.size() < 2: return gm_ref._tem_saida(estado_atual, port)
 	
-	if sentido_via == 1: return port == p[0] # Apenas aceita via porta 1
-	if sentido_via == 2: return port == p[1] # Apenas aceita via porta 2
+	if sentido_via == 1: return port == p[0] 
+	if sentido_via == 2: return port == p[1] 
 	return false
 
 # ==========================================
@@ -164,7 +160,7 @@ func _apagar_tile():
 	if estado_atual in [17, 8, 7, 23, 24]:
 		if not gm_ref.popup_confirmacao.visible:
 			var nome_item = "esta estrutura"
-			if estado_atual in [17, 8]: nome_item = "esta estação"
+			if estado_atual in [17, 8]: nome_item = "este edifício"
 			elif estado_atual == 7: nome_item = "esta chave"
 			elif estado_atual in [23, 24]: nome_item = "este semáforo"
 			
@@ -191,7 +187,7 @@ func _apagar_tile():
 		gm_ref.reembolsar_dinheiro(estado_atual, pos_tela)
 		
 		estado_atual = base_bioma
-		sentido_via = 0 # Reinicia a memória de sentido
+		sentido_via = 0 
 		
 		gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual)
 		queue_redraw()
@@ -238,7 +234,6 @@ func _obter_semaforo_inteligente() -> int:
 
 func _aplicar_estado():
 	var tool = gm_ref.estado_selecionado
-	
 	if tool == 23: tool = _obter_semaforo_inteligente()
 	
 	if estado_atual in [17, 8, 10] or tool == estado_atual: return 
@@ -255,18 +250,12 @@ func _aplicar_estado():
 		if estado_atual != base_bioma and estado_atual != 9: 
 			gm_ref.reembolsar_dinheiro(estado_atual, pos_tela + Vector2(0, 20))
 		
-		sentido_via = 0 # Limpa a memória se substituirmos a via
+		sentido_via = 0 
 		estado_atual = tool
 		
 	arvore_cortada = (estado_atual == 9 and arvore_cortada)
 	gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual)
 	queue_redraw()
-	
-	var ds = [Vector2i(0,1), Vector2i(0,-1), Vector2i(1,0), Vector2i(-1,0)]
-	for d in ds:
-		var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
-		if n and n.estado_atual in [17, 8]:
-			n.queue_redraw()
 
 # ==========================================
 # VISUAL E DESENHO
@@ -287,7 +276,7 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 		var d_list = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]; var viz = []
 		for d in d_list:
 			var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
-			if n and gm_ref._eh_trilho_ou_estacao(n.estado_atual): viz.append(d)
+			if n and gm_ref._eh_trilho(n.estado_atual): viz.append(d)
 			
 		if viz.size() == 0: 
 			var txt = "Y"
@@ -299,12 +288,10 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 			if estado == 7:
 				var fechado_idx = -1
 				if viz.size() > 2: fechado_idx = index_chave % viz.size()
-				
 				for i in range(viz.size()):
 					var d = viz[i]
 					var line_color = Color(0.8, 0.1, 0.1, alpha) if i == fechado_idx else Color(0.1, 0.8, 0.1, alpha)
 					draw_line(Vector2(50, 50), Vector2(50, 50) + Vector2(d.x, d.y) * 50, line_color, 10.0)
-				
 				draw_circle(Vector2(50, 50), 16.0, c)
 				draw_colored_polygon(PackedVector2Array([Vector2(50, 40), Vector2(60, 56), Vector2(40, 56)]), Color(0.8, 0.8, 0.8, alpha))
 			else:
@@ -319,32 +306,13 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 	if estado == 23 or estado == 24: 
 		draw_rect(Rect2(40, 15, 20, 15) if estado==23 else Rect2(15, 40, 15, 20), c); draw_circle(Vector2(50, 22) if estado==23 else Vector2(22, 50), 5, Color(0, 1, 0, alpha) if semaforo_aberto else Color(1, 0, 0, alpha))
 	
+	# --- VISUAL DO EDIFÍCIO DA ESTAÇÃO ---
 	if estado in [17, 8]: 
-		var dir_conexao = Vector2i(0, 1) 
-		var d_list = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]
-		for d in d_list:
-			var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
-			if n and gm_ref._eh_trilho_ou_estacao(n.estado_atual):
-				dir_conexao = d
-				break
-		
-		var plat_rect = Rect2(-5, 95, 110, 20)
-		if dir_conexao == Vector2i(0, -1): plat_rect = Rect2(-5, -15, 110, 20) 
-		elif dir_conexao == Vector2i(0, 1): plat_rect = Rect2(-5, 95, 110, 20) 
-		elif dir_conexao == Vector2i(-1, 0): plat_rect = Rect2(-15, -5, 20, 110) 
-		elif dir_conexao == Vector2i(1, 0): plat_rect = Rect2(95, -5, 20, 110) 
-
 		var cor_base = Color(1, 0, 1, alpha) if estado == 17 else Color(1, 0.84, 0, alpha)
-		var rect_gigante = Rect2(-5, -5, 110, 110)
-		
-		draw_rect(rect_gigante, cor_base)
-		if estado == 17: draw_rect(Rect2(5, 5, 90, 90), c_white, false, 5.0)
-		
-		draw_rect(plat_rect, Color(0, 0, 0, alpha)) 
-		draw_rect(plat_rect, c_white, false, 3.0)   
-		
-		var texto = "CENTRAL" if estado == 17 else "TEM " + gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "N/A")
-		draw_string(font, Vector2(55, 50), texto, HORIZONTAL_ALIGNMENT_CENTER, -1, 16 if estado == 17 else 18, c_white if estado == 17 else c)
+		draw_rect(Rect2(5, 5, 90, 90), cor_base)
+		draw_rect(Rect2(15, 15, 70, 70), Color(0, 0, 0, alpha), false, 4.0)
+		var texto = "CENTRAL" if estado == 17 else gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "N/A")
+		draw_string(font, Vector2(50, 55), texto, HORIZONTAL_ALIGNMENT_CENTER, -1, 16 if estado == 17 else 18, c_white if estado == 17 else c)
 	
 	if estado == 9: 
 		if arvore_cortada: 
@@ -355,22 +323,14 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 	
 	if estado == 10: draw_rect(Rect2(25, 35, 50, 30), Color(0.5, 0.5, 0.5, alpha))
 
-	# --- NOVO: SETAS DE SENTIDO ÚNICO ---
 	if estado in [3, 4, 18, 19, 20, 21, 12, 13, 15, 16] and sentido_via != 0:
 		var p = _get_ports()
 		if p.size() == 2:
 			var dir_flow = p[1] - p[0] if sentido_via == 1 else p[0] - p[1]
 			var angle = Vector2(dir_flow.x, dir_flow.y).angle()
 			var centro = Vector2(50, 50)
-			
-			# Desenha Símbolo "Chevron" Triplo
-			var pts = PackedVector2Array([
-				centro + Vector2(-12, -12).rotated(angle),
-				centro + Vector2(12, 0).rotated(angle),
-				centro + Vector2(-12, 12).rotated(angle)
-			])
-			draw_polyline(pts, Color(1, 1, 0, alpha), 6.0, true) # Seta Amarela
-	# ------------------------------------
+			var pts = PackedVector2Array([centro + Vector2(-12, -12).rotated(angle), centro + Vector2(12, 0).rotated(angle), centro + Vector2(-12, 12).rotated(angle)])
+			draw_polyline(pts, Color(1, 1, 0, alpha), 6.0, true)
 
 func _draw():
 	var rect = Rect2(Vector2.ZERO, size)

@@ -1,4 +1,4 @@
-# game_manager.gd - Multas, Sentidos Únicos e Rotatórias
+# game_manager.gd - Sistema Blindado com Conexão Direta nas Estações
 extends Node2D
 
 # --- CONFIGURAÇÕES GERAIS E EXPORTS ---
@@ -61,9 +61,12 @@ var estoque = {"LEITE": 0, "MADEIRA": 0, "TRIGO": 0, "ACO": 0, "CARVAO": 0}
 var metas = {"LEITE": 0, "MADEIRA": 0, "TRIGO": 0, "ACO": 0, "CARVAO": 0}
 var recompensas = {"LEITE": 200, "MADEIRA": 150, "TRIGO": 180, "ACO": 300, "CARVAO": 250}
 var cores_carga = {"LEITE": Color.WHITE, "MADEIRA": Color("#8b5a2b"), "TRIGO": Color("#f5deb3"), "ACO": Color("#a9a9a9"), "CARVAO": Color("#2f4f4f")}
+
+# REMOVIDO O TILO 25 DOS CUSTOS
 var custos_construcao = {3: 10, 4: 10, 18: 15, 19: 15, 20: 15, 21: 15, 5: 30, 6: 40, 7: 50, 12: 100, 13: 100, 15: 150, 16: 150, 23: 50, 24: 50}
 var estacoes_oferta = {} 
 
+# REMOVIDO O TILO 25 DAS CATEGORIAS E NOMES
 var categorias = {"TRILHOS": [22, 7, 23], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8]}
 var nomes_tiles = {0: "BORRACHA", 1: "SELEÇÃO", 2: "TERRA", 3: "TRILHO H", 4: "TRILHO V", 18: "┐ S-O", 19: "┘ N-O", 20: "└ N-L", 21: "┌ S-L", 5: "BIFURC. Y", 6: "CRUZAM. H", 7: "CHAVE", 17: "PRINCIPAL", 8: "ESTAÇÃO", 9: "ÁRVORE", 10: "PEDRA", 11: "ÁGUA", 14: "MONTANHA", 22: "PINCEL MÁGICO", 12: "PONTE H", 13: "PONTE V", 15: "TÚNEL H", 16: "TÚNEL V", 23: "SEMÁFORO", 24: "SEMÁFORO V"}
 
@@ -277,7 +280,7 @@ func cortar_arvore(pos_tela: Vector2) -> bool:
 
 	if pos_tela != Vector2.ZERO:
 		_spawn_floating_text(pos_tela, "MULTA: -$" + str(custo_multa_arvore), Color.RED)
-		_spawn_floating_text(pos_tela + Vector2(0, 25), "+1 MADEIRA (P/ TRILHOS)", Color("#8b5a2b"))
+		_spawn_floating_text(pos_tela + Vector2(0, 25), "+1 MADEIRA", Color("#8b5a2b"))
 
 	custo_multa_arvore += 50 
 	_atualizar_status_bar()
@@ -290,6 +293,7 @@ func gastar_dinheiro(id_ferramenta, pos_tela: Vector2 = Vector2.ZERO) -> bool:
 	var custo_final = custo
 	var usou_madeira = false
 
+	# Removido ID 25 daqui também
 	if id_ferramenta in [3, 4, 18, 19, 20, 21, 5, 6, 7, 23, 24, 12, 13, 15, 16] and madeira_construcao > 0:
 		var desconto = 10
 		if custo_final < 10: desconto = custo_final
@@ -339,23 +343,7 @@ func _avancar_fase():
 
 func _gerar_relatorio_semanal():
 	get_tree().paused = true
-	var principal_pos = Vector2i(-1, -1); var alvos = []
-	for x in range(tamanho_mapa):
-		for y in range(tamanho_mapa):
-			if matriz_mapa[x][y] == 17: principal_pos = Vector2i(x,y)
-			if matriz_mapa[x][y] == 8: alvos.append(Vector2i(x,y))
-	
-	var tiles_ativos_pos = [] 
-	if principal_pos != Vector2i(-1,-1):
-		for a in alvos:
-			var path = astar.get_id_path(principal_pos.x + principal_pos.y*tamanho_mapa, a.x + a.y*tamanho_mapa)
-			for id in path:
-				var px = id % 1000 % tamanho_mapa
-				var py = id % 1000 / tamanho_mapa
-				var pos = Vector2i(px, py)
-				if not tiles_ativos_pos.has(pos): tiles_ativos_pos.append(pos)
-	
-	var custo_trilhos_ideal = tiles_ativos_pos.size() * 1.0
+	var custo_trilhos_ideal = 10.0
 	var custo_trilhos_real = int(custo_trilhos_ideal * (verba_vias / 100.0))
 	
 	var qtd_trens = trens_ativos.size()
@@ -365,27 +353,11 @@ func _gerar_relatorio_semanal():
 	var custo_total = custo_trilhos_real + custo_trens_real
 	dinheiro -= custo_total 
 	
-	var vias_quebradas_agora = 0
-	var deficit_critico = limite_seguro_vias - verba_vias
-	
-	if deficit_critico > 0.0: 
-		var chance_quebra = (deficit_critico / 50.0) * 0.40 
-		for pos in tiles_ativos_pos:
-			if randf() < chance_quebra:
-				if not trilhos_quebrados.has(pos):
-					trilhos_quebrados.append(pos)
-					vias_quebradas_agora += 1
-					var t = _get_tile_at(pos.x, pos.y)
-					if t: t.queue_redraw()
-	_reconstruir_malha() 
-	
 	var texto = "RESUMO DA SEMANA " + str(semana_atual) + "\n\n"
 	texto += "Vias: - $" + str(custo_trilhos_real) + "\n"
 	texto += "Trens: - $" + str(custo_trens_real) + "\n"
 	texto += "Receita: + $" + str(receita_semanal) + "\n"
 	texto += "--------------------------------------\n"
-	if vias_quebradas_agora > 0:
-		texto += "⚠️ " + str(vias_quebradas_agora) + " trilhos cederam!\n"
 	texto += "\nSALDO: $" + str(dinheiro)
 	
 	popup_relatorio.dialog_text = texto
@@ -427,7 +399,6 @@ func _iniciar_fase(num):
 	for id in trens_ativos.keys(): if is_instance_valid(trens_ativos[id]): trens_ativos[id].queue_free()
 	trens_ativos.clear()
 	
-	# Usamos 'false' aqui para não travar o jogo limpando o mapa!
 	for x in range(tamanho_mapa):
 		for y in range(tamanho_mapa): _aplicar_no_mapa(x, y, 2, false)
 		
@@ -435,7 +406,7 @@ func _iniciar_fase(num):
 	if num == 2: _gerar_mapa_nivel_2()
 	if num == 3: _gerar_mapa_nivel_3()
 	
-	_reconstruir_malha() # Recalcula a IA apenas UMA vez no final!
+	_reconstruir_malha()
 	_atualizar_status_bar()
 
 func _checar_vitoria():
@@ -455,7 +426,7 @@ func _checar_vitoria():
 		popup_vitoria.popup_centered()
 
 # ==========================================
-# MAPA E AStar2D (AGORA UNIDIRECIONAL)
+# MAPA E AStar2D (CONEXÃO DIRETA)
 # ==========================================
 func _criar_matriz_vazia():
 	matriz_mapa.clear()
@@ -476,15 +447,16 @@ func atualizar_matriz(x, y, estado):
 	if x >= 0 and x < tamanho_mapa and y >= 0 and y < tamanho_mapa: 
 		matriz_mapa[x][y] = estado; _reconstruir_malha()
 
-func _eh_trilho_ou_estacao(tipo) -> bool:
-	return tipo in [3, 4, 18, 19, 20, 21, 5, 6, 7, 8, 17, 12, 13, 15, 16, 23, 24]
+# ATUALIZADO: Agora 17 (Central) e 8 (Estação) SÃO considerados pontos válidos na rota!
+func _eh_trilho(tipo) -> bool:
+	return tipo in [3, 4, 18, 19, 20, 21, 5, 6, 7, 12, 13, 15, 16, 23, 24, 8, 17]
 
 func _reconstruir_malha():
 	astar.clear()
 	for x in range(tamanho_mapa):
 		for y in range(tamanho_mapa):
 			var tipo = matriz_mapa[x][y]
-			if not _eh_trilho_ou_estacao(tipo): continue
+			if not _eh_trilho(tipo): continue
 			
 			if trilhos_quebrados.has(Vector2i(x,y)): continue 
 			
@@ -495,31 +467,25 @@ func _reconstruir_malha():
 	for x in range(tamanho_mapa):
 		for y in range(tamanho_mapa):
 			var ta = matriz_mapa[x][y]
-			if not _eh_trilho_ou_estacao(ta) or trilhos_quebrados.has(Vector2i(x,y)): continue 
+			if not _eh_trilho(ta) or trilhos_quebrados.has(Vector2i(x,y)): continue 
 			for d in dirs:
 				var nx = x+d.x; var ny = y+d.y
 				if nx>=0 and nx<tamanho_mapa and ny>=0 and ny<tamanho_mapa:
 					var tb = matriz_mapa[nx][ny]
-					if _eh_trilho_ou_estacao(tb) and not trilhos_quebrados.has(Vector2i(nx,ny)): 
+					if _eh_trilho(tb) and not trilhos_quebrados.has(Vector2i(nx,ny)): 
 						_tentar_conectar(x,y,ta,nx,ny,tb,d)
 
-# --- ATUALIZADO: CONEXÃO UNIDIRECIONAL E PERMISSÃO DO TILE ---
 func _tentar_conectar(ax, ay, ta, bx, by, tb, d):
+	if not _tem_saida(ta, d) or not _tem_saida(tb, -d): return
+	
 	var t_a = _get_tile_at(ax, ay)
 	var t_b = _get_tile_at(bx, by)
-
-	var pode_ir = true
 	
+	var pode_ir = true
 	if t_a and t_a.has_method("permite_saida"):
 		if not t_a.permite_saida(d): pode_ir = false
-	else:
-		if not _tem_saida(ta, d): pode_ir = false
-
 	if t_b and t_b.has_method("permite_entrada"):
 		if not t_b.permite_entrada(-d): pode_ir = false
-	else:
-		if not _tem_saida(tb, -d): pode_ir = false
-
 	if t_a and t_a.has_method("is_direction_closed") and t_a.is_direction_closed(d): pode_ir = false
 	if t_b and t_b.has_method("is_direction_closed") and t_b.is_direction_closed(-d): pode_ir = false
 	
@@ -528,9 +494,9 @@ func _tentar_conectar(ax, ay, ta, bx, by, tb, d):
 		if ta == 6 and d.y != 0: ida += 1000
 		if tb == 6 and d.y != 0: idb += 1000
 		if astar.has_point(ida) and astar.has_point(idb): 
-			# Passar 'false' é crucial aqui. Isso diz ao AStar que a conexão é estritamente unidirecional (de ida para idb)
 			astar.connect_points(ida, idb, false) 
 
+# ATUALIZADO: 17 e 8 agora aceitam saídas (e entradas) por todos os lados!
 func _tem_saida(tipo, dir) -> bool:
 	if tipo in [3, 12, 15, 23]: return dir.x != 0
 	if tipo in [4, 13, 16, 24]: return dir.y != 0
@@ -538,11 +504,43 @@ func _tem_saida(tipo, dir) -> bool:
 	if tipo == 19: return dir in [Vector2i(0, -1), Vector2i(-1, 0)]
 	if tipo == 20: return dir in [Vector2i(0, -1), Vector2i(1, 0)]
 	if tipo == 21: return dir in [Vector2i(0, 1), Vector2i(1, 0)]
-	if tipo in [5, 6, 7, 8, 17]: return true
+	if tipo in [5, 6, 7, 8, 17]: return true 
 	return false
 
 # ==========================================
-# FÍSICA DE TRENS, CARGAS E COLISÕES
+# CÁLCULO DE ROTAS (TIPAGEM FORTE)
+# ==========================================
+func _calcular_rota_trem(origem_grid: Vector2i, destino_grid: Vector2i, avoid_grid: Vector2i) -> Array[Vector2]:
+	var id_from = origem_grid.x + origem_grid.y * tamanho_mapa
+	var id_to = destino_grid.x + destino_grid.y * tamanho_mapa
+	var avoid_id1 = -1
+	var avoid_id2 = -1
+	var conn1 = false
+	var conn2 = false
+
+	if avoid_grid != Vector2i(-1, -1):
+		avoid_id1 = avoid_grid.x + avoid_grid.y * tamanho_mapa
+		avoid_id2 = avoid_id1 + 1000
+		if astar.has_point(id_from) and astar.has_point(avoid_id1):
+			conn1 = astar.are_points_connected(id_from, avoid_id1)
+			if conn1: astar.disconnect_points(id_from, avoid_id1)
+		if astar.has_point(id_from) and astar.has_point(avoid_id2):
+			conn2 = astar.are_points_connected(id_from, avoid_id2)
+			if conn2: astar.disconnect_points(id_from, avoid_id2)
+
+	var path_ids = astar.get_id_path(id_from, id_to)
+
+	if avoid_grid != Vector2i(-1, -1):
+		if conn1: astar.connect_points(id_from, avoid_id1, false)
+		if conn2: astar.connect_points(id_from, avoid_id2, false)
+
+	var pts: Array[Vector2] = []
+	for pid in path_ids:
+		pts.append(astar.get_point_position(pid) * 100.0 + Vector2(50.0, 50.0))
+	return pts
+
+# ==========================================
+# FÍSICA DE TRENS E COLISÕES
 # ==========================================
 func _atualizar_visual_carga(vagao_node: ColorRect, carga: String, vazio: bool):
 	for c in vagao_node.get_children():
@@ -586,46 +584,68 @@ func _processar_movimento_trens(delta):
 		var t = trens_ativos[id]
 		if not is_instance_valid(t): continue
 
-		var pts = t.get_meta("pontos")
-		var idx = t.get_meta("indice_alvo")
-		var indo = t.get_meta("indo")
+		var pts: Array[Vector2] = t.get_meta("pontos")
+		var idx: int = t.get_meta("indice_alvo")
+		var estado_viagem = t.get_meta("estado")
 		var carga = t.get_meta("carga")
+		var tempo_espera = t.get_meta("tempo_espera", 0.0)
 
-		var grid_pos = Vector2i(int(t.position.x / 100), int(t.position.y / 100))
-		var alvo = pts[idx]
-		var alvo_grid = Vector2i(int(alvo.x / 100), int(alvo.y / 100))
+		if tempo_espera > 0.0:
+			tempo_espera -= delta
+			if tempo_espera <= 0.0:
+				var from = Vector2i(int(t.position.x/100.0), int(t.position.y/100.0))
+				var to = t.get_meta("origem") if estado_viagem == "VOLTANDO" else t.get_meta("destino")
+				
+				var avoid = Vector2i(-1, -1)
+				if t.has_meta("last_grid_pos"):
+					avoid = t.get_meta("last_grid_pos")
+
+				var new_path = _calcular_rota_trem(from, to, avoid)
+				if new_path.size() >= 2:
+					t.set_meta("pontos", new_path)
+					t.set_meta("indice_alvo", 1)
+					t.set_meta("tempo_espera", 0.0)
+					pts = new_path
+					idx = 1
+				else:
+					t.set_meta("tempo_espera", 2.0) 
+					_spawn_floating_text(t.position, "FALTA SAÍDA (BOLSÃO)!", Color.RED)
+					continue 
+			else:
+				t.set_meta("tempo_espera", tempo_espera)
+				continue 
+
+		var grid_pos = Vector2i(int(t.position.x / 100.0), int(t.position.y / 100.0))
+		var alvo: Vector2 = pts[idx]
+		var alvo_grid = Vector2i(int(alvo.x / 100.0), int(alvo.y / 100.0))
 		
 		var parar_agora = false
-		
 		var tile_alvo = _get_tile_at(alvo_grid.x, alvo_grid.y)
+		
 		if tile_alvo and tile_alvo.estado_atual in [23, 24] and not tile_alvo.semaforo_aberto:
 			parar_agora = true
 		
 		if grid_pos != alvo_grid and not parar_agora:
 			var id_atual = grid_pos.x + grid_pos.y * tamanho_mapa
 			var id_alvo = alvo_grid.x + alvo_grid.y * tamanho_mapa
-			
 			var tile_atual = _get_tile_at(grid_pos.x, grid_pos.y)
 			if tile_atual and tile_atual.estado_atual == 6 and (alvo_grid.y - grid_pos.y) != 0: id_atual += 1000
 			if tile_alvo and tile_alvo.estado_atual == 6 and (alvo_grid.y - grid_pos.y) != 0: id_alvo += 1000
 			
-			# Usamos false aqui para forçar a verificação apenas da conexão que vai nesta direção específica
 			if not astar.are_points_connected(id_atual, id_alvo, false):
 				parar_agora = true
 				
 		if not parar_agora and tile_alvo and tile_alvo.estado_atual in [5, 6, 7]:
-			var next_idx = idx + 1 if indo else idx - 1
-			if next_idx >= 0 and next_idx < pts.size():
-				var prox_alvo = pts[next_idx]
-				var prox_alvo_grid = Vector2i(int(prox_alvo.x / 100), int(prox_alvo.y / 100))
-				
+			var next_idx = idx + 1
+			if next_idx < pts.size():
+				var prox_alvo: Vector2 = pts[next_idx]
+				var prox_alvo_grid = Vector2i(int(prox_alvo.x / 100.0), int(prox_alvo.y / 100.0))
 				var tile_prox = _get_tile_at(prox_alvo_grid.x, prox_alvo_grid.y)
 				if tile_prox and tile_prox.estado_atual in [23, 24] and not tile_prox.semaforo_aberto:
 					parar_agora = true
 				else:
 					var id_alvo_nav = alvo_grid.x + alvo_grid.y * tamanho_mapa
 					var id_prox = prox_alvo_grid.x + prox_alvo_grid.y * tamanho_mapa
-					
 					if tile_alvo.estado_atual == 6 and (prox_alvo_grid.y - alvo_grid.y) != 0: id_alvo_nav += 1000
 					if tile_prox and tile_prox.estado_atual == 6 and (prox_alvo_grid.y - alvo_grid.y) != 0: id_prox += 1000
 					
@@ -637,7 +657,6 @@ func _processar_movimento_trens(delta):
 				continue 
 
 		var vel = 250.0 * (verba_trens / 100.0) * (verba_vias / 100.0)
-
 		t.position = t.position.move_toward(alvo, vel * delta)
 
 		var prev_pos = t.get_meta("prev_pos", t.position)
@@ -646,19 +665,23 @@ func _processar_movimento_trens(delta):
 			t.set_meta("prev_pos", t.position)
 
 		if t.position.distance_to(alvo) < 1.0:
-			if indo:
-				if idx < pts.size() - 1:
-					t.set_meta("indice_alvo", idx + 1)
-				else: 
-					t.set_meta("indo", false)
-					if pts.size() > 1: t.set_meta("indice_alvo", idx - 1)
-					_atualizar_visual_carga(t.get_node("Vagao"), carga, false)
+			if idx < pts.size() - 1:
+				t.set_meta("indice_alvo", idx + 1)
 			else:
-				if idx > 0:
-					t.set_meta("indice_alvo", idx - 1)
-				else: 
-					t.set_meta("indo", true)
-					if pts.size() > 1: t.set_meta("indice_alvo", 1)
+				t.set_meta("tempo_espera", 2.0)
+				
+				var idx_pts = pts.size() - 2
+				if idx_pts >= 0:
+					var p_pts: Vector2 = pts[idx_pts]
+					t.set_meta("last_grid_pos", Vector2i(int(p_pts.x / 100.0), int(p_pts.y / 100.0)))
+				else:
+					t.set_meta("last_grid_pos", Vector2i(-1, -1))
+
+				if estado_viagem == "INDO":
+					t.set_meta("estado", "VOLTANDO")
+					_atualizar_visual_carga(t.get_node("Vagao"), carga, false)
+				else:
+					t.set_meta("estado", "INDO")
 					_atualizar_visual_carga(t.get_node("Vagao"), carga, true)
 					
 					estoque[carga] += 1
@@ -684,28 +707,49 @@ func _verificar_colisoes():
 				popup_game_over.popup_centered()
 				return
 
+# --- VALIDAÇÃO EXTREMA COM CONEXÃO DIRETA NAS ESTAÇÕES ---
 func tentar_lancar_trem():
-	if get_tree().paused == true: return 
-	var principal = Vector2i(-1, -1); var alvos = []
+	if get_tree().paused: return 
+	
+	var centrais: Array[Vector2i] = []
+	var estacoes: Array[Vector2i] = []
 	for x in range(tamanho_mapa):
 		for y in range(tamanho_mapa):
-			if matriz_mapa[x][y] == 17: principal = Vector2i(x, y)
-			if matriz_mapa[x][y] == 8: alvos.append(Vector2i(x, y))
-	if principal == Vector2i(-1, -1): return
-	
-	for d in alvos:
-		var p_ids = astar.get_id_path(principal.x + principal.y*tamanho_mapa, d.x + d.y*tamanho_mapa)
-		if p_ids.size() > 1:
-			var pts = []; for pid in p_ids: pts.append(astar.get_point_position(pid))
-			var id = "T_%d_%d_%d" % [d.x, d.y, Time.get_ticks_msec()]
+			if matriz_mapa[x][y] == 17: centrais.append(Vector2i(x, y))
+			if matriz_mapa[x][y] == 8: estacoes.append(Vector2i(x, y))
 			
-			fila_trens_pendentes.append({
-				"pts": pts, "id": id, "carga": estacoes_oferta.get(d, "LEITE"), "o": principal, "d": d
-			})
-			var px = principal.x * 100 + 50; var py = principal.y * 100 + 50
-			_spawn_floating_text(Vector2(px, py), "AGENDADO!", Color.YELLOW)
+	if centrais.size() == 0: return
+	var principal: Vector2i = centrais[0]
+	
+	for est in estacoes:
+		# Agora a origem e destino SÃO a própria central e a própria estação!
+		var path_ida: Array[Vector2] = _calcular_rota_trem(principal, est, Vector2i(-1, -1))
+		if path_ida.size() >= 2:
+			var p_ida: Vector2 = path_ida[path_ida.size() - 2]
+			var avoid_volta = Vector2i(int(p_ida.x / 100.0), int(p_ida.y / 100.0))
+			
+			var path_volta: Array[Vector2] = _calcular_rota_trem(est, principal, avoid_volta)
 
-func _spawnar_trem(pontos, id, carga, o, d):
+			if path_volta.size() >= 2:
+				var p_volta: Vector2 = path_volta[path_volta.size() - 2]
+				var avoid_ida2 = Vector2i(int(p_volta.x / 100.0), int(p_volta.y / 100.0))
+				
+				var path_ida2: Array[Vector2] = _calcular_rota_trem(principal, est, avoid_ida2)
+
+				if path_ida2.size() >= 2:
+					var id = "T_%d_%d_%d" % [est.x, est.y, Time.get_ticks_msec()]
+					fila_trens_pendentes.append({
+						"pts": path_ida, "id": id, "carga": estacoes_oferta.get(est, "LEITE"), "o": principal, "d": est
+					})
+					_spawn_floating_text(Vector2(principal.x * 100.0 + 50.0, principal.y * 100.0 + 50.0), "AGENDADO!", Color.YELLOW)
+				else:
+					_spawn_floating_text(Vector2(principal.x * 100.0 + 50.0, principal.y * 100.0 + 50.0), "FALTA BOLSÃO NA CENTRAL!", Color.RED)
+			else:
+				_spawn_floating_text(Vector2(est.x * 100.0 + 50.0, est.y * 100.0 + 50.0), "FALTA BOLSÃO NA ESTAÇÃO!", Color.RED)
+		else:
+			_spawn_floating_text(Vector2(principal.x * 100.0 + 50.0, principal.y * 100.0 + 50.0), "SEM ROTA LIGADA!", Color.RED)
+
+func _spawnar_trem(pontos: Array[Vector2], id, carga, o, d):
 	var t = Node2D.new(); t.name = id; t.z_index = 20; add_child(t); trens_ativos[id] = t
 	
 	var loc = ColorRect.new(); loc.size = Vector2(60, 40); loc.color = Color(0.1, 0.1, 0.1); 
@@ -719,20 +763,30 @@ func _spawnar_trem(pontos, id, carga, o, d):
 	t.set_meta("origem", o)
 	t.set_meta("destino", d)
 	t.set_meta("carga", carga)
-	t.set_meta("indo", true)
+	t.set_meta("estado", "INDO")
+	t.set_meta("tempo_espera", 0.0)
+	t.set_meta("last_grid_pos", o)
 	t.set_meta("indice_alvo", 1)
 	
-	var pts = []; 
-	for p in pontos: pts.append(Vector2(p.x*100 + 50, p.y*100 + 50))
+	var pts: Array[Vector2] = pontos.duplicate()
 	t.set_meta("pontos", pts)
 	
-	var pos_inicial = pts[0]
+	var pos_inicial: Vector2 = pts[0]
 	t.set_meta("prev_pos", pos_inicial)
 	t.position = pos_inicial
 
 # ==========================================
-# O PINCEL DEFINITIVO (AUTO-TILER)
+# O PINCEL DEFINITIVO E O RESTANTE DO CÓDIGO
 # ==========================================
+func _aplicar_no_mapa(x, y, estado, reconstruir = true):
+	matriz_mapa[x][y] = estado; var t = _get_tile_at(x, y)
+	if t: t.estado_atual = estado; t.base_bioma = estado if estado in [2,11,14] else 2; t.queue_redraw()
+	if reconstruir: _reconstruir_malha()
+
+func _aplicar_estacao_oferta(x, y, tipo, reconstruir = true): 
+	estacoes_oferta[Vector2i(x, y)] = tipo; 
+	_aplicar_no_mapa(x, y, 8, reconstruir)
+
 func _prever_pincel_magico(x, y) -> int:
 	var t = _get_tile_at(x, y)
 	var bioma = 2
@@ -743,7 +797,7 @@ func _prever_pincel_magico(x, y) -> int:
 	for d in dirs:
 		var n = Vector2i(x,y)+d
 		if n.x>=0 and n.x<tamanho_mapa and n.y>=0 and n.y<tamanho_mapa:
-			if _eh_trilho_ou_estacao(matriz_mapa[n.x][n.y]): v.append(d)
+			if _eh_trilho(matriz_mapa[n.x][n.y]): v.append(d)
 			
 	var tipo = 3
 	if v.size() == 2:
@@ -809,39 +863,32 @@ func aplicar_pincel_magico(x, y):
 	ultima_pos_pincel = Vector2i(x, y)
 
 # ==========================================
-# GERAÇÃO DE NÍVEIS E ESTAÇÕES
+# GERAÇÃO DE NÍVEIS (REMOVIDO TILO 25)
 # ==========================================
 func _get_tile_at(x, y):
 	for t in mapa_node.get_children(): if t.has_method("get_grid_pos") and t.get_grid_pos() == Vector2i(x, y): return t
 	return null
 
-
 func _gerar_mapa_nivel_1():
 	metas["LEITE"] = 3; metas["MADEIRA"] = 2
 	for x in range(tamanho_mapa): _aplicar_no_mapa(x, 9, 11, false); _aplicar_no_mapa(x, 10, 11, false)
-	_aplicar_no_mapa(2, 2, 17, false); _aplicar_estacao_oferta(17, 17, "LEITE", false); _aplicar_estacao_oferta(4, 15, "MADEIRA", false)
-
+	_aplicar_no_mapa(2, 2, 17, false)
+	_aplicar_estacao_oferta(17, 17, "LEITE", false)
+	_aplicar_estacao_oferta(4, 15, "MADEIRA", false)
 
 func _gerar_mapa_nivel_2():
 	metas["LEITE"] = 2; metas["MADEIRA"] = 4; metas["TRIGO"] = 2
 	for y in range(tamanho_mapa): _aplicar_no_mapa(8, y, 11, false)
-	_aplicar_no_mapa(17, 2, 17, false); _aplicar_estacao_oferta(2, 17, "LEITE", false); _aplicar_estacao_oferta(2, 2, "MADEIRA", false); _aplicar_estacao_oferta(17, 17, "TRIGO", false)
-
+	_aplicar_no_mapa(17, 2, 17, false)
+	_aplicar_estacao_oferta(2, 17, "LEITE", false)
+	_aplicar_estacao_oferta(2, 2, "MADEIRA", false)
+	_aplicar_estacao_oferta(17, 17, "TRIGO", false)
 
 func _gerar_mapa_nivel_3():
 	metas["TRIGO"] = 2; metas["ACO"] = 3; metas["CARVAO"] = 2
 	for x in range(tamanho_mapa): _aplicar_no_mapa(x, 10, 11, false)
 	for y in range(tamanho_mapa): _aplicar_no_mapa(10, y, 14, false)
-	_aplicar_no_mapa(2, 2, 17, false); _aplicar_estacao_oferta(17, 2, "ACO", false); _aplicar_estacao_oferta(2, 17, "CARVAO", false); _aplicar_estacao_oferta(17, 17, "TRIGO", false)
-
-
-
-
-func _aplicar_estacao_oferta(x, y, tipo, reconstruir = true): 
-	estacoes_oferta[Vector2i(x, y)] = tipo; 
-	_aplicar_no_mapa(x, y, 8, reconstruir)
-
-func _aplicar_no_mapa(x, y, estado, reconstruir = true):
-	matriz_mapa[x][y] = estado; var t = _get_tile_at(x, y)
-	if t: t.estado_atual = estado; t.base_bioma = estado if estado in [2,11,14] else 2; t.queue_redraw()
-	if reconstruir: _reconstruir_malha()
+	_aplicar_no_mapa(2, 2, 17, false)
+	_aplicar_estacao_oferta(17, 2, "ACO", false)
+	_aplicar_estacao_oferta(2, 17, "CARVAO", false)
+	_aplicar_estacao_oferta(17, 17, "TRIGO", false)

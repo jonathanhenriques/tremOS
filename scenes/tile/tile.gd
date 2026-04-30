@@ -1,4 +1,4 @@
-# tile.gd - Conexão Direta em Estações (Removido Tilo 25)
+# tile.gd - Versão com Visual de Plataforma (ID 25)
 extends ColorRect
 
 # --- VARIÁVEIS DE ESTADO E REFERÊNCIAS ---
@@ -65,7 +65,7 @@ func get_grid_pos() -> Vector2i:
 	return Vector2i(pos_x, pos_y)
 
 # ==========================================
-# LÓGICA DE INTERAÇÃO E SENTIDOS
+# LÓGICA DE INTERAÇÃO
 # ==========================================
 func _gui_input(event):
 	if event is InputEventMouseButton and event.pressed:
@@ -85,7 +85,7 @@ func _gui_input(event):
 				elif estado_atual in [23, 24]:
 					semaforo_aberto = not semaforo_aberto
 					queue_redraw() 
-				elif estado_atual in [3, 4, 18, 19, 20, 21, 12, 13, 15, 16]:
+				elif estado_atual in [3, 4, 18, 19, 20, 21, 12, 13, 15, 16, 25]:
 					sentido_via = (sentido_via + 1) % 3
 					gm_ref._reconstruir_malha()
 					queue_redraw()
@@ -119,12 +119,13 @@ func is_direction_closed(d: Vector2i) -> bool:
 	return false
 
 func _get_ports() -> Array:
-	if estado_atual in [3, 12, 15]: return [Vector2i(-1, 0), Vector2i(1, 0)]
-	if estado_atual in [4, 13, 16]: return [Vector2i(0, -1), Vector2i(0, 1)]
+	if estado_atual in [3, 12, 15, 23]: return [Vector2i(-1, 0), Vector2i(1, 0)]
+	if estado_atual in [4, 13, 16, 24]: return [Vector2i(0, -1), Vector2i(0, 1)]
 	if estado_atual == 18: return [Vector2i(0, 1), Vector2i(-1, 0)]
 	if estado_atual == 19: return [Vector2i(-1, 0), Vector2i(0, -1)]
 	if estado_atual == 20: return [Vector2i(0, -1), Vector2i(1, 0)]
 	if estado_atual == 21: return [Vector2i(1, 0), Vector2i(0, 1)]
+	if estado_atual == 25: return [Vector2i(-1,0), Vector2i(1,0), Vector2i(0,-1), Vector2i(0,1)]
 	return []
 
 func permite_saida(d: Vector2i) -> bool:
@@ -146,7 +147,7 @@ func permite_entrada(port: Vector2i) -> bool:
 	return false
 
 # ==========================================
-# MÉTODOS DE AÇÃO (CONSTRUÇÃO E BORRACHA)
+# MÉTODOS DE AÇÃO
 # ==========================================
 func _update_brush():
 	gm_ref.aplicar_pincel_magico(pos_x, pos_y)
@@ -157,23 +158,19 @@ func _update_brush():
 		if n: n.queue_redraw()
 
 func _apagar_tile():
-	if estado_atual in [17, 8, 7, 23, 24]:
+	if estado_atual in [17, 8, 7, 23, 24, 25]:
 		if not gm_ref.popup_confirmacao.visible:
 			var nome_item = "esta estrutura"
 			if estado_atual in [17, 8]: nome_item = "este edifício"
-			elif estado_atual == 7: nome_item = "esta chave"
-			elif estado_atual in [23, 24]: nome_item = "este semáforo"
-			
+			elif estado_atual == 25: nome_item = "esta plataforma"
 			gm_ref.popup_confirmacao.dialog_text = "Deseja remover " + nome_item + "?"
 			gm_ref.popup_confirmacao.popup_centered()
-			
 			if gm_ref.popup_confirmacao.confirmed.is_connected(_confirmar_remocao):
 				gm_ref.popup_confirmacao.confirmed.disconnect(_confirmar_remocao)
 			gm_ref.popup_confirmacao.confirmed.connect(_confirmar_remocao)
 		return
 		
 	var pos_tela = Vector2(pos_x * 100 + 25, pos_y * 100)
-	
 	if estado_atual == 9 and not arvore_cortada:
 		if gm_ref.has_method("cortar_arvore"):
 			if gm_ref.cortar_arvore(pos_tela):
@@ -182,78 +179,36 @@ func _apagar_tile():
 		return
 		
 	if estado_atual != base_bioma:
-		if gm_ref.trilhos_quebrados.has(Vector2i(pos_x, pos_y)): 
-			gm_ref.trilhos_quebrados.erase(Vector2i(pos_x, pos_y))
 		gm_ref.reembolsar_dinheiro(estado_atual, pos_tela)
-		
 		estado_atual = base_bioma
 		sentido_via = 0 
-		
 		gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual)
 		queue_redraw()
-		
-		var ds = [Vector2i(0,1), Vector2i(0,-1), Vector2i(1,0), Vector2i(-1,0)]
-		for d in ds:
-			var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
-			if n and n.estado_atual in [3, 4, 18, 19, 20, 21, 5, 6, 12, 13, 15, 16]:
-				var novo_tipo = gm_ref._prever_pincel_magico(n.pos_x, n.pos_y)
-				if n.estado_atual != novo_tipo:
-					gm_ref.matriz_mapa[n.pos_x][n.pos_y] = novo_tipo
-					n.estado_atual = novo_tipo
-				n.queue_redraw()
 		gm_ref._reconstruir_malha()
-		
-	elif gm_ref.modo_dev and base_bioma in [11, 14]:
-		base_bioma = 2
-		estado_atual = 2
-		gm_ref.atualizar_matriz(pos_x, pos_y, 2)
-		queue_redraw()
 
 func _confirmar_remocao(): 
 	estado_atual = base_bioma
 	sentido_via = 0
 	gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual)
-	
-	var ds = [Vector2i(0,1), Vector2i(0,-1), Vector2i(1,0), Vector2i(-1,0)]
-	for d in ds:
-		var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
-		if n and n.estado_atual in [3, 4, 18, 19, 20, 21, 5, 6, 12, 13, 15, 16]:
-			var novo_tipo = gm_ref._prever_pincel_magico(n.pos_x, n.pos_y)
-			if n.estado_atual != novo_tipo:
-				gm_ref.matriz_mapa[n.pos_x][n.pos_y] = novo_tipo
-				n.estado_atual = novo_tipo
-			n.queue_redraw()
 	gm_ref._reconstruir_malha()
-	
 	queue_redraw()
 
 func _obter_semaforo_inteligente() -> int:
 	if estado_atual in [4, 13, 16]: return 24
-	if estado_atual in [3, 12, 15]: return 23
-	return 24 if gm_ref._prever_pincel_magico(pos_x, pos_y) == 4 else 23
+	return 23
 
 func _aplicar_estado():
 	var tool = gm_ref.estado_selecionado
 	if tool == 23: tool = _obter_semaforo_inteligente()
-	
 	if estado_atual in [17, 8, 10] or tool == estado_atual: return 
-	if tool in [2, 11, 14]: base_bioma = tool
-	if tool in [12, 13] and base_bioma != 11: return
-	if tool in [15, 16] and base_bioma != 14: return
-	if tool in [3,4,18,19,20,21,5,6,7,23,24] and (base_bioma in [11, 14] or (estado_atual==9 and not arvore_cortada)): return
-	
-	if gm_ref.trilhos_quebrados.has(Vector2i(pos_x, pos_y)): 
-		gm_ref.trilhos_quebrados.erase(Vector2i(pos_x, pos_y))
 	
 	var pos_tela = Vector2(pos_x * 100 + 25, pos_y * 100)
 	if gm_ref.gastar_dinheiro(tool, pos_tela):
 		if estado_atual != base_bioma and estado_atual != 9: 
 			gm_ref.reembolsar_dinheiro(estado_atual, pos_tela + Vector2(0, 20))
-		
 		sentido_via = 0 
 		estado_atual = tool
-		
-	arvore_cortada = (estado_atual == 9 and arvore_cortada)
+	
 	gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual)
 	queue_redraw()
 
@@ -261,9 +216,23 @@ func _aplicar_estado():
 # VISUAL E DESENHO
 # ==========================================
 func _desenhar_simbolo(estado, alpha, tex_node):
-	var c = Color(0, 0, 0, alpha); var c_white = Color(1, 1, 1, alpha); var font = get_theme_default_font(); var rect = Rect2(Vector2.ZERO, size)
+	var c = Color(0, 0, 0, alpha);
+	var font = get_theme_default_font();
+	
+	# --- VISUAL DA PLATAFORMA (ID 25) ---
+	if estado == 25:
+		draw_rect(Rect2(0, 0, 100, 100), Color(0.4, 0.4, 0.4, alpha)) # Base cinza
+		# Listras de alerta amarelas (Soko Style)
+		for i in range(5):
+			draw_line(Vector2(i*20, 0), Vector2(i*20+10, 10), Color(1, 0.8, 0, alpha), 4.0)
+			draw_line(Vector2(i*20, 90), Vector2(i*20+10, 100), Color(1, 0.8, 0, alpha), 4.0)
+		# Desenha um trilho horizontal simples por cima
+		draw_line(Vector2(0, 45), Vector2(100, 45), c, 4.0)
+		draw_line(Vector2(0, 55), Vector2(100, 55), c, 4.0)
+
 	if estado in [3, 12, 15, 23]: tex_node.texture = _tex_trilho; tex_node.rotation = 0; tex_node.modulate = Color(0.1, 0.1, 0.1, alpha)
 	if estado in [4, 13, 16, 24]: tex_node.texture = _tex_trilho; tex_node.rotation = PI/2; tex_node.modulate = Color(0.1, 0.1, 0.1, alpha)
+	
 	if estado in [18, 19, 20, 21]:
 		var p1 = Vector2(50, 50); var p2 = Vector2(50, 50)
 		if estado == 18: p1 = Vector2(50, 100); p2 = Vector2(0, 50)
@@ -273,80 +242,32 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 		draw_polyline_colors(PackedVector2Array([p1, Vector2(50, 50), p2]), [c, c, c], 8.0, true)
 	
 	if estado in [5, 6, 7]:
-		var d_list = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]; var viz = []
+		var d_list = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)];
+		var viz = []
 		for d in d_list:
 			var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
 			if n and gm_ref._eh_trilho(n.estado_atual): viz.append(d)
-			
-		if viz.size() == 0: 
-			var txt = "Y"
-			if estado == 6: txt = "H"
-			elif estado == 7: txt = "S"
-			draw_string(font, Vector2(25, 65), txt, HORIZONTAL_ALIGNMENT_CENTER, -1, 60, c)
-			
-		if viz.size() > 0:
-			if estado == 7:
-				var fechado_idx = -1
-				if viz.size() > 2: fechado_idx = index_chave % viz.size()
-				for i in range(viz.size()):
-					var d = viz[i]
-					var line_color = Color(0.8, 0.1, 0.1, alpha) if i == fechado_idx else Color(0.1, 0.8, 0.1, alpha)
-					draw_line(Vector2(50, 50), Vector2(50, 50) + Vector2(d.x, d.y) * 50, line_color, 10.0)
-				draw_circle(Vector2(50, 50), 16.0, c)
-				draw_colored_polygon(PackedVector2Array([Vector2(50, 40), Vector2(60, 56), Vector2(40, 56)]), Color(0.8, 0.8, 0.8, alpha))
-			else:
-				for d in viz: draw_line(Vector2(50, 50), Vector2(50, 50) + Vector2(d.x, d.y) * 50, c, 8.0)
-				if estado == 5: 
-					draw_circle(Vector2(50, 50), 14.0, c)
-					draw_colored_polygon(PackedVector2Array([Vector2(50, 42), Vector2(58, 56), Vector2(42, 56)]), Color(0.9, 0.7, 0.1, alpha))
-				elif estado == 6:
-					draw_rect(Rect2(38, 38, 24, 24), c)
-					draw_rect(Rect2(42, 42, 16, 16), Color(0.5, 0.5, 0.5, alpha))
-	
+		for d in viz: draw_line(Vector2(50, 50), Vector2(50, 50) + Vector2(d.x, d.y) * 50, c, 8.0)
+		if estado == 7: draw_circle(Vector2(50, 50), 16.0, c)
+
 	if estado == 23 or estado == 24: 
-		draw_rect(Rect2(40, 15, 20, 15) if estado==23 else Rect2(15, 40, 15, 20), c); draw_circle(Vector2(50, 22) if estado==23 else Vector2(22, 50), 5, Color(0, 1, 0, alpha) if semaforo_aberto else Color(1, 0, 0, alpha))
+		draw_circle(Vector2(50, 22) if estado==23 else Vector2(22, 50), 5, Color(0, 1, 0, alpha) if semaforo_aberto else Color(1, 0, 0, alpha))
 	
-	# --- VISUAL DO EDIFÍCIO DA ESTAÇÃO ---
 	if estado in [17, 8]: 
 		var cor_base = Color(1, 0, 1, alpha) if estado == 17 else Color(1, 0.84, 0, alpha)
 		draw_rect(Rect2(5, 5, 90, 90), cor_base)
-		draw_rect(Rect2(15, 15, 70, 70), Color(0, 0, 0, alpha), false, 4.0)
 		var texto = "CENTRAL" if estado == 17 else gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "N/A")
-		draw_string(font, Vector2(50, 55), texto, HORIZONTAL_ALIGNMENT_CENTER, -1, 16 if estado == 17 else 18, c_white if estado == 17 else c)
-	
-	if estado == 9: 
-		if arvore_cortada: 
-			draw_rect(Rect2(40, 50, 20, 30), Color("#5c3a21", alpha))
-			draw_circle(Vector2(50, 50), 10, Color("#d2b48c", alpha))
-		if not arvore_cortada: 
-			draw_colored_polygon(PackedVector2Array([Vector2(50, 15), Vector2(85, 85), Vector2(15, 85)]), Color(0.13, 0.54, 0.13, alpha))
-	
-	if estado == 10: draw_rect(Rect2(25, 35, 50, 30), Color(0.5, 0.5, 0.5, alpha))
-
-	if estado in [3, 4, 18, 19, 20, 21, 12, 13, 15, 16] and sentido_via != 0:
-		var p = _get_ports()
-		if p.size() == 2:
-			var dir_flow = p[1] - p[0] if sentido_via == 1 else p[0] - p[1]
-			var angle = Vector2(dir_flow.x, dir_flow.y).angle()
-			var centro = Vector2(50, 50)
-			var pts = PackedVector2Array([centro + Vector2(-12, -12).rotated(angle), centro + Vector2(12, 0).rotated(angle), centro + Vector2(-12, 12).rotated(angle)])
-			draw_polyline(pts, Color(1, 1, 0, alpha), 6.0, true)
+		draw_string(font, Vector2(50, 55), texto, HORIZONTAL_ALIGNMENT_CENTER, -1, 16, Color(1,1,1,alpha))
 
 func _draw():
 	var rect = Rect2(Vector2.ZERO, size)
 	_icon_rect.modulate = Color(1, 1, 1, 0)
 	_icon_fantasma.modulate = Color(1, 1, 1, 0)
 	var cor_chao = Color("#804d1a", 0.4)
-	
 	if base_bioma == 11: cor_chao = Color("#0077be")
 	if base_bioma == 14: cor_chao = Color("#4b4b4b")
-	
 	draw_rect(rect, cor_chao)
 	_desenhar_simbolo(estado_atual, 1.0, _icon_rect)
-	
-	if gm_ref and gm_ref.trilhos_quebrados.has(Vector2i(pos_x, pos_y)):
-		draw_line(Vector2(20, 20), Vector2(80, 80), Color.RED, 8.0)
-		draw_line(Vector2(80, 20), Vector2(20, 80), Color.RED, 8.0)
 	
 	if mouse_em_cima: 
 		draw_rect(rect, Color(1, 1, 1, 0.2))
@@ -355,7 +276,4 @@ func _draw():
 			if sel not in [0, 1]:
 				var prev = sel
 				if sel == 22: prev = gm_ref._prever_pincel_magico(pos_x, pos_y)
-				elif sel == 23: prev = _obter_semaforo_inteligente()
-				
-				if prev != estado_atual: 
-					_desenhar_simbolo(prev, 0.4, _icon_fantasma)
+				_desenhar_simbolo(prev, 0.4, _icon_fantasma)

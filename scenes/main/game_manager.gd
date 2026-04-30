@@ -1,4 +1,4 @@
-# game_manager.gd - Versão Final Corrigida (Fix Crash ID 25)
+# game_manager.gd - Versão Completa (Trem Reativo "Sempre em Frente" + Alerta)
 extends Node2D
 
 # --- CONFIGURAÇÕES GERAIS E EXPORTS ---
@@ -67,7 +67,7 @@ var estacoes_oferta = {}
 
 var categorias = {"TRILHOS": [22, 7, 23], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8, 25]}
 
-# Dicionário de Nomes (CORREÇÃO: Garantindo que 25 existe)
+# Dicionário de Nomes (CORREÇÃO: Caracteres especiais e ID 25)
 var nomes_tiles = {
 	0: "BORRACHA", 1: "SELEÇÃO", 2: "TERRA", 3: "TRILHO H", 4: "TRILHO V", 
 	18: "┐ S-O", 19: "┘ N-O", 20: "└ N-L", 21: "┌ S-L", 5: "BIFURC. Y", 
@@ -155,8 +155,7 @@ func _setup_dialogos():
 		get_tree().paused = false
 	)
 
-	popup_relatorio = AcceptDialog.new();
-	add_child(popup_relatorio)
+	popup_relatorio = AcceptDialog.new(); add_child(popup_relatorio)
 	popup_relatorio.title = "Balanço Financeiro Semanal"
 	popup_relatorio.ok_button_text = "Iniciar Nova Semana"
 	popup_relatorio.exclusive = true 
@@ -186,15 +185,13 @@ func _setup_dialogos():
 	_construir_painel_orcamento()
 
 func _construir_painel_orcamento():
-	popup_orcamento = AcceptDialog.new();
-	add_child(popup_orcamento)
+	popup_orcamento = AcceptDialog.new(); add_child(popup_orcamento)
 	popup_orcamento.title = "Orçamento de Utilidades e Transportes"
 	popup_orcamento.ok_button_text = "Aplicar Verbas"
 	popup_orcamento.exclusive = true
 	popup_orcamento.process_mode = Node.PROCESS_MODE_ALWAYS
 	
-	var vbox = VBoxContainer.new();
-	popup_orcamento.add_child(vbox)
+	var vbox = VBoxContainer.new(); popup_orcamento.add_child(vbox)
 	
 	var label_vias = Label.new(); label_vias.text = "Despesas: Manutenção de Vias"; vbox.add_child(label_vias)
 	var slider_vias = HSlider.new(); slider_vias.min_value = 0; slider_vias.max_value = 100;
@@ -205,8 +202,7 @@ func _construir_painel_orcamento():
 	
 	var separador = HSeparator.new(); vbox.add_child(separador)
 	
-	var label_trens = Label.new();
-	label_trens.text = "Despesas: Operação da Frota"; vbox.add_child(label_trens)
+	var label_trens = Label.new(); label_trens.text = "Despesas: Operação da Frota"; vbox.add_child(label_trens)
 	var slider_trens = HSlider.new(); slider_trens.min_value = 0; slider_trens.max_value = 100; slider_trens.value = verba_trens;
 	vbox.add_child(slider_trens)
 	var val_trens = Label.new(); val_trens.text = "Verba: 100%"; vbox.add_child(val_trens)
@@ -215,13 +211,11 @@ func _construir_painel_orcamento():
 	popup_orcamento.confirmed.connect(func(): if not get_tree().paused: Engine.time_scale = velocidade_jogo)
 
 func _criar_ui_sistema_soko():
-	var canvas = CanvasLayer.new();
-	add_child(canvas)
+	var canvas = CanvasLayer.new(); add_child(canvas)
 	canvas.process_mode = Node.PROCESS_MODE_ALWAYS
 	
 	var topo = Panel.new(); topo.custom_minimum_size = Vector2(0, 90); topo.set_anchors_preset(Control.PRESET_TOP_WIDE); canvas.add_child(topo)
-	info_label = Label.new(); topo.add_child(info_label);
-	info_label.position = Vector2(160, 5)
+	info_label = Label.new(); topo.add_child(info_label); info_label.position = Vector2(160, 5)
 	
 	var btn_orc = Button.new(); btn_orc.text = "ORÇAMENTO"; btn_orc.position = Vector2(20, 5);
 	btn_orc.custom_minimum_size = Vector2(120, 30)
@@ -235,12 +229,10 @@ func _criar_ui_sistema_soko():
 	topo.add_child(botao_pause)
 	
 	var scroll = ScrollContainer.new(); scroll.custom_minimum_size = Vector2(850, 60); scroll.position = Vector2(160, 30); topo.add_child(scroll)
-	sub_menu_container = HBoxContainer.new();
-	scroll.add_child(sub_menu_container)
+	sub_menu_container = HBoxContainer.new(); scroll.add_child(sub_menu_container)
 	var lateral = PanelContainer.new(); lateral.custom_minimum_size = Vector2(130, 0); lateral.set_anchors_preset(Control.PRESET_LEFT_WIDE); lateral.offset_top = 95; canvas.add_child(lateral)
 	
-	var vbox = VBoxContainer.new();
-	lateral.add_child(vbox)
+	var vbox = VBoxContainer.new(); lateral.add_child(vbox)
 	
 	for n in ["BORRACHA", "SELEÇÃO"]:
 		var b = Button.new(); b.text = n; b.custom_minimum_size = Vector2(110, 45);
@@ -248,10 +240,8 @@ func _criar_ui_sistema_soko():
 		b.pressed.connect(_selecionar_ferramenta.bind(0 if n=="BORRACHA" else 1))
 	
 	for cat in categorias.keys():
-		if not modo_dev and (cat == "BIOMAS" or cat == "ESTRUTURAS"):
-			continue
-		var btn = Button.new();
-		btn.text = cat; btn.custom_minimum_size = Vector2(110, 45); btn.pressed.connect(_abrir_sub_menu.bind(cat)); vbox.add_child(btn)
+		if not modo_dev and (cat == "BIOMAS" or cat == "ESTRUTURAS"): continue
+		var btn = Button.new(); btn.text = cat; btn.custom_minimum_size = Vector2(110, 45); btn.pressed.connect(_abrir_sub_menu.bind(cat)); vbox.add_child(btn)
 	
 	_abrir_sub_menu("TRILHOS")
 
@@ -265,17 +255,15 @@ func _alternar_pause():
 		botao_pause.text = "CONTINUAR"
 		botao_pause.add_theme_color_override("font_color", Color.GREEN)
 
-# FUNÇÃO CORRIGIDA COM SEGURANÇA (.get)
 func _abrir_sub_menu(cat):
 	categoria_atual = cat
 	for n in sub_menu_container.get_children(): n.queue_free()
 	for id in categorias.get(cat, []):
 		if id == 24: continue 
 		var btn = Button.new();
-		# Fallback para evitar crash caso o ID não tenha nome
 		btn.text = nomes_tiles.get(id, "ITEM_" + str(id)); 
 		btn.custom_minimum_size = Vector2(120, 35)
-		btn.pressed.connect(_selecionar_ferramenta.bind(id)); 
+		btn.pressed.connect(_selecionar_ferramenta.bind(id));
 		sub_menu_container.add_child(btn)
 
 func _selecionar_ferramenta(id):
@@ -296,7 +284,6 @@ func _atualizar_status_bar():
 		var madeira_texto = ""
 		if madeira_construcao > 0: madeira_texto = " (Madeira: " + str(madeira_construcao) + ")"
 		
-		# Uso seguro do dicionário aqui também
 		var nome_ferramenta = nomes_tiles.get(estado_selecionado, "PINCEL")
 		info_label.text = "[%s] T: %s | $ %d%s | FASE %d | ATIVO: %s | %s" % [status_texto, _get_tempo_formatado(), dinheiro, madeira_texto, nivel_atual, nome_ferramenta, string_metas]
 
@@ -328,7 +315,8 @@ func gastar_dinheiro(id_ferramenta, pos_tela: Vector2 = Vector2.ZERO) -> bool:
 		custo_final -= desconto
 		madeira_construcao -= 1
 		usou_madeira = true
-	if dinheiro < custo_final: return false
+	if dinheiro < custo_final: 
+		return false
 	dinheiro -= custo_final
 	_atualizar_status_bar()
 	if pos_tela != Vector2.ZERO:
@@ -338,22 +326,27 @@ func gastar_dinheiro(id_ferramenta, pos_tela: Vector2 = Vector2.ZERO) -> bool:
 
 func gastar_dinheiro_especifico(valor: int, pos_tela: Vector2) -> bool:
 	if dinheiro < valor: return false
-	dinheiro -= valor; _atualizar_status_bar()
+	dinheiro -= valor;
+	_atualizar_status_bar()
 	if pos_tela != Vector2.ZERO: _spawn_floating_text(pos_tela, "- $" + str(valor), Color.RED)
 	return true
 
 func reembolsar_dinheiro(id_ferramenta, pos_tela: Vector2):
 	var valor = custos_construcao.get(id_ferramenta, 0)
 	if valor > 0:
-		dinheiro += valor; _atualizar_status_bar()
+		dinheiro += valor;
+		_atualizar_status_bar()
 		if pos_tela != Vector2.ZERO: _spawn_floating_text(pos_tela, "+ $" + str(valor), Color.GREEN)
 
 func _spawn_floating_text(pos: Vector2, txt: String, col: Color):
-	var l = Label.new(); l.text = txt; l.add_theme_color_override("font_color", col); l.add_theme_font_size_override("font_size", 22)
-	l.position = pos + Vector2(randf_range(-15, 15), randf_range(-15, 15)); l.z_index = 50; add_child(l)
+	var l = Label.new();
+	l.text = txt; l.add_theme_color_override("font_color", col); l.add_theme_font_size_override("font_size", 22)
+	l.position = pos + Vector2(randf_range(-15, 15), randf_range(-15, 15)); l.z_index = 50;
+	add_child(l)
 	l.process_mode = Node.PROCESS_MODE_ALWAYS
 	var tw = create_tween(); tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS) 
-	tw.tween_property(l, "position", l.position + Vector2(0,-60), 1.0); tw.parallel().tween_property(l, "modulate:a", 0.0, 1.0)
+	tw.tween_property(l, "position", l.position + Vector2(0,-60), 1.0);
+	tw.parallel().tween_property(l, "modulate:a", 0.0, 1.0)
 	tw.tween_callback(l.queue_free)
 
 func _avancar_fase():
@@ -376,26 +369,32 @@ func _gerar_relatorio_semanal():
 	texto += "Receita: + $" + str(receita_semanal) + "\n"
 	texto += "--------------------------------------\n"
 	texto += "\nSALDO: $" + str(dinheiro)
-	popup_relatorio.dialog_text = texto; popup_relatorio.popup_centered()
+	popup_relatorio.dialog_text = texto;
+	popup_relatorio.popup_centered()
 
 func consertar_trilho(x: int, y: int):
 	var pos = Vector2i(x, y)
 	if trilhos_quebrados.has(pos):
 		if gastar_dinheiro_especifico(25, Vector2(x*100+25, y*100)): 
 			trilhos_quebrados.erase(pos); _reconstruir_malha()
-			var t = _get_tile_at(x, y); if t: t.queue_redraw()
+			var t = _get_tile_at(x, y);
+			if t: t.queue_redraw()
 
 func _iniciar_nova_semana():
 	get_tree().paused = false; receita_semanal = 0; tempo_semana = 0.0; semana_atual += 1
 
 func _iniciar_fase(num):
-	get_tree().paused = false; fase_concluida = false; jogo_perdido = false; jogo_infinito = false
-	tempo_fase = 0.0; tempo_semana = 0.0; semana_atual = 1; receita_semanal = 0
+	get_tree().paused = false;
+	fase_concluida = false; jogo_perdido = false; jogo_infinito = false
+	tempo_fase = 0.0; tempo_semana = 0.0; semana_atual = 1;
+	receita_semanal = 0
 	dinheiro = 2000 + (num * 500); custo_multa_arvore = 50; madeira_construcao = 0
-	trilhos_quebrados.clear(); fila_trens_pendentes.clear(); tempo_prox_trem = 0.0; ignorar_colisao_timer = 0.0
+	trilhos_quebrados.clear(); fila_trens_pendentes.clear(); tempo_prox_trem = 0.0;
+	ignorar_colisao_timer = 0.0
 	for k in estoque.keys(): estoque[k] = 0;
 	for k in metas.keys(): metas[k] = 0
-	estacoes_oferta.clear(); astar.clear()
+	estacoes_oferta.clear();
+	astar.clear()
 	for id in trens_ativos.keys(): if is_instance_valid(trens_ativos[id]): trens_ativos[id].queue_free()
 	trens_ativos.clear()
 	for x in range(tamanho_mapa):
@@ -403,7 +402,8 @@ func _iniciar_fase(num):
 	if num == 1: _gerar_mapa_nivel_1()
 	if num == 2: _gerar_mapa_nivel_2()
 	if num == 3: _gerar_mapa_nivel_3()
-	_reconstruir_malha(); _atualizar_status_bar()
+	_reconstruir_malha();
+	_atualizar_status_bar()
 
 func _checar_vitoria():
 	if jogo_infinito: return
@@ -413,11 +413,13 @@ func _checar_vitoria():
 			tem_metas = true
 			if estoque[r] < metas[r]: ok = false
 	if tem_metas and ok and not fase_concluida: 
-		fase_concluida = true; get_tree().paused = true 
-		popup_vitoria.dialog_text = "Fase concluída em %s!" % _get_tempo_formatado(); popup_vitoria.popup_centered()
+		fase_concluida = true;
+		get_tree().paused = true 
+		popup_vitoria.dialog_text = "Fase concluída em %s!" % _get_tempo_formatado();
+		popup_vitoria.popup_centered()
 
 # ==========================================
-# MAPA E AStar2D
+# MAPA E AStar2D (Mantido para validação)
 # ==========================================
 func _criar_matriz_vazia():
 	matriz_mapa.clear()
@@ -429,14 +431,17 @@ func _criar_mapa():
 	for n in mapa_node.get_children(): if n.name != "LinhasDoGrid": n.queue_free()
 	for x in range(tamanho_mapa):
 		for y in range(tamanho_mapa):
-			var t = tile_scene.instantiate(); t.position = Vector2(x*100, y*100); t.configurar(x, y, self); mapa_node.add_child(t)
+			var t = tile_scene.instantiate();
+			t.position = Vector2(x*100, y*100); t.configurar(x, y, self); mapa_node.add_child(t)
 
 func _configurar_grid_visual():
-	var l = mapa_node.get_node_or_null("LinhasDoGrid"); if l: l.configurar(tamanho_mapa, tile_size)
+	var l = mapa_node.get_node_or_null("LinhasDoGrid");
+	if l: l.configurar(tamanho_mapa, tile_size)
 
 func atualizar_matriz(x, y, estado):
 	if x >= 0 and x < tamanho_mapa and y >= 0 and y < tamanho_mapa: 
-		matriz_mapa[x][y] = estado; _reconstruir_malha()
+		matriz_mapa[x][y] = estado;
+		_reconstruir_malha()
 
 func _eh_trilho(tipo) -> bool:
 	return tipo in [3, 4, 18, 19, 20, 21, 5, 6, 7, 12, 13, 15, 16, 23, 24, 8, 17, 25]
@@ -453,21 +458,26 @@ func _reconstruir_malha():
 	var dirs = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]
 	for x in range(tamanho_mapa):
 		for y in range(tamanho_mapa):
-			var ta = matriz_mapa[x][y]; if not _eh_trilho(ta) or trilhos_quebrados.has(Vector2i(x,y)): continue 
+			var ta = matriz_mapa[x][y];
+			if not _eh_trilho(ta) or trilhos_quebrados.has(Vector2i(x,y)): continue 
 			for d in dirs:
-				var nx = x+d.x; var ny = y+d.y
+				var nx = x+d.x;
+				var ny = y+d.y
 				if nx>=0 and nx<tamanho_mapa and ny>=0 and ny<tamanho_mapa:
-					var tb = matriz_mapa[nx][ny]; if _eh_trilho(tb) and not trilhos_quebrados.has(Vector2i(nx,ny)): 
+					var tb = matriz_mapa[nx][ny];
+					if _eh_trilho(tb) and not trilhos_quebrados.has(Vector2i(nx,ny)): 
 						_tentar_conectar(x,y,ta,nx,ny,tb,d)
 
 func _tentar_conectar(ax, ay, ta, bx, by, tb, d):
 	if not _tem_saida(ta, d) or not _tem_saida(tb, -d): return
-	var t_a = _get_tile_at(ax, ay); var t_b = _get_tile_at(bx, by)
+	var t_a = _get_tile_at(ax, ay);
+	var t_b = _get_tile_at(bx, by)
 	var pode_ir = true
 	if t_a and t_a.has_method("permite_saida") and not t_a.permite_saida(d): pode_ir = false
 	if t_b and t_b.has_method("permite_entrada") and not t_b.permite_entrada(-d): pode_ir = false
 	if pode_ir:
-		var ida = ax + ay * tamanho_mapa; var idb = bx + by * tamanho_mapa
+		var ida = ax + ay * tamanho_mapa;
+		var idb = bx + by * tamanho_mapa
 		if ta == 6 and d.y != 0: ida += 1000
 		if tb == 6 and d.y != 0: idb += 1000
 		if astar.has_point(ida) and astar.has_point(idb): astar.connect_points(ida, idb, false) 
@@ -482,14 +492,14 @@ func _tem_saida(tipo, dir) -> bool:
 	if tipo in [5, 6, 7, 8, 17, 25]: return true 
 	return false
 
-# ==========================================
-# CÁLCULO DE ROTAS E TRENS
-# ==========================================
 func _calcular_rota_trem(origem_grid: Vector2i, destino_grid: Vector2i, avoid_grid: Vector2i) -> Array[Vector2]:
-	var id_from = origem_grid.x + origem_grid.y * tamanho_mapa; var id_to = destino_grid.x + destino_grid.y * tamanho_mapa
-	var avoid_id1 = -1; var avoid_id2 = -1; var conn1 = false; var conn2 = false
+	var id_from = origem_grid.x + origem_grid.y * tamanho_mapa;
+	var id_to = destino_grid.x + destino_grid.y * tamanho_mapa
+	var avoid_id1 = -1; var avoid_id2 = -1; var conn1 = false;
+	var conn2 = false
 	if avoid_grid != Vector2i(-1, -1):
-		avoid_id1 = avoid_grid.x + avoid_grid.y * tamanho_mapa; avoid_id2 = avoid_id1 + 1000
+		avoid_id1 = avoid_grid.x + avoid_grid.y * tamanho_mapa;
+		avoid_id2 = avoid_id1 + 1000
 		if astar.has_point(id_from) and astar.has_point(avoid_id1):
 			conn1 = astar.are_points_connected(id_from, avoid_id1, false)
 			if conn1: astar.disconnect_points(id_from, avoid_id1, false)
@@ -504,50 +514,164 @@ func _calcular_rota_trem(origem_grid: Vector2i, destino_grid: Vector2i, avoid_gr
 	for pid in path_ids: pts.append(astar.get_point_position(pid) * 100.0 + Vector2(50.0, 50.0))
 	return pts
 
+# ==========================================
+# CÁLCULO FÍSICO DE TRENS E COLISÕES
+# ==========================================
 func _processar_movimento_trens(delta):
 	for id in trens_ativos.keys():
-		var t = trens_ativos[id]; if not is_instance_valid(t): continue
-		var pts: Array[Vector2] = t.get_meta("pontos"); var idx: int = t.get_meta("indice_alvo")
-		var estado_viagem = t.get_meta("estado"); var carga = t.get_meta("carga")
+		var t = trens_ativos[id]
+		if not is_instance_valid(t): continue
+
+		# 1. Se estiver esperando (carga ou semáforo), decrementa o tempo
 		var tempo_espera = t.get_meta("tempo_espera", 0.0)
 		if tempo_espera > 0.0:
-			tempo_espera -= delta; t.set_meta("tempo_espera", tempo_espera)
-			if tempo_espera <= 0.0:
-				var from = Vector2i(int(t.position.x/100.0), int(t.position.y/100.0))
-				var to = t.get_meta("origem") if estado_viagem == "VOLTANDO" else t.get_meta("destino")
-				var avoid = t.get_meta("last_grid_pos") if t.has_meta("last_grid_pos") else Vector2i(-1,-1)
-				var new_path = _calcular_rota_trem(from, to, avoid)
-				if new_path.size() >= 2:
-					t.set_meta("pontos", new_path); t.set_meta("indice_alvo", 1); pts = new_path; idx = 1
-				else:
-					t.set_meta("tempo_espera", 2.0); _spawn_floating_text(t.position, "FALTA SAÍDA!", Color.RED)
-			continue 
-		var alvo: Vector2 = pts[idx]; var alvo_grid = Vector2i(int(alvo.x / 100.0), int(alvo.y / 100.0))
-		var tile_alvo = _get_tile_at(alvo_grid.x, alvo_grid.y)
-		if tile_alvo and tile_alvo.estado_atual in [23, 24] and not tile_alvo.semaforo_aberto:
-			if t.position.distance_to(alvo) <= 80.0: continue 
+			t.set_meta("tempo_espera", tempo_espera - delta)
+			continue
+
+		var dir_atual = t.get_meta("direcao_atual")
+
+		# --- LÓGICA DO ALERTA AMARELO (?) ---
+		if dir_atual == Vector2i.ZERO:
+			if not t.has_node("StuckAlert"):
+				var alert = Label.new()
+				alert.name = "StuckAlert"
+				alert.text = "?"
+				alert.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				alert.add_theme_font_size_override("font_size", 45)
+				alert.add_theme_color_override("font_color", Color.YELLOW)
+				alert.add_theme_constant_override("outline_size", 4)
+				alert.add_theme_color_override("font_outline_color", Color.BLACK)
+				alert.position = Vector2(-20, -80)
+				alert.z_index = 51
+				t.add_child(alert)
+			
+			# Tenta acordar o trem (caso o jogador tenha desenhado um trilho na frente dele)
+			_decidir_proximo_passo(t, t.get_meta("grid_atual"), t.get_meta("ultima_direcao_valida"))
+			continue
+		else:
+			# Remove o alerta quando voltar a andar
+			if t.has_node("StuckAlert"):
+				t.get_node("StuckAlert").queue_free()
+
+		# 2. Movimentação Física e Rotação
+		var alvo_grid = t.get_meta("alvo_grid")
+		# CORREÇÃO PARA EVITAR ERRO DE OPERANDO: Casting individual dos inteiros para float
+		var pos_alvo_pixel = Vector2(float(alvo_grid.x), float(alvo_grid.y)) * 100.0 + Vector2(50.0, 50.0)
+		
 		var vel = 250.0 * (verba_trens / 100.0) * (verba_vias / 100.0)
-		t.position = t.position.move_toward(alvo, vel * delta)
-		if t.position.distance_to(alvo) < 1.0:
-			if idx < pts.size() - 1: t.set_meta("indice_alvo", idx + 1)
-			else:
-				t.set_meta("tempo_espera", 2.0); var p_pts = pts[pts.size()-2]; t.set_meta("last_grid_pos", Vector2i(int(p_pts.x/100.0), int(p_pts.y/100.0)))
-				if estado_viagem == "INDO":
-					t.set_meta("estado", "VOLTANDO"); _atualizar_visual_carga(t.get_node("Vagao"), carga, false)
-				else:
-					t.set_meta("estado", "INDO"); _atualizar_visual_carga(t.get_node("Vagao"), carga, true)
-					estoque[carga] += 1; dinheiro += recompensas[carga]; receita_semanal += recompensas[carga]
-					_spawn_floating_text(t.position, "+ $" + str(recompensas[carga]), Color.GREEN); _atualizar_status_bar(); _checar_vitoria()
+		t.position = t.position.move_toward(pos_alvo_pixel, vel * delta)
+		
+		var angulo_alvo = Vector2(dir_atual).angle()
+		t.rotation = lerp_angle(t.rotation, angulo_alvo, 10.0 * delta)
+
+		# 3. Chegou no centro do tile alvo? Lê o trilho e decide para onde ir
+		if t.position.distance_to(pos_alvo_pixel) < 1.0:
+			t.set_meta("grid_atual", alvo_grid)
+			_decidir_proximo_passo(t, alvo_grid, dir_atual)
+
+func _decidir_proximo_passo(t, grid_atual: Vector2i, dir_vinda: Vector2i):
+	# Segurança se sair do mapa
+	if not _grid_valido(grid_atual.x, grid_atual.y):
+		t.set_meta("direcao_atual", Vector2i.ZERO)
+		t.set_meta("ultima_direcao_valida", dir_vinda)
+		return
+
+	var tipo = matriz_mapa[grid_atual.x][grid_atual.y]
+	var tile = _get_tile_at(grid_atual.x, grid_atual.y)
+	
+	# Plataforma
+	if tipo == 25 and not t.get_meta("parada_concluida", false):
+		_processar_logistica_plataforma(t)
+		return
+
+	if tipo != 25:
+		t.set_meta("parada_concluida", false)
+
+	# Semáforo
+	if (tipo == 23 or tipo == 24) and tile and not tile.semaforo_aberto:
+		return # Fica parado
+
+	# Descobre a próxima direção
+	var nova_dir = _obter_saida_fisica(tipo, dir_vinda, tile)
+	
+	if nova_dir == Vector2i.ZERO:
+		t.set_meta("direcao_atual", Vector2i.ZERO)
+		t.set_meta("ultima_direcao_valida", dir_vinda)
+	else:
+		t.set_meta("direcao_atual", nova_dir)
+		t.set_meta("alvo_grid", grid_atual + nova_dir)
+		t.set_meta("ultima_direcao_valida", nova_dir)
+
+func _obter_saida_fisica(tipo, entrada: Vector2i, tile) -> Vector2i:
+	match tipo:
+		3, 23, 25: return entrada if entrada.x != 0 else Vector2i.ZERO
+		4, 24: return entrada if entrada.y != 0 else Vector2i.ZERO
+		18:
+			if entrada == Vector2i(0, -1): return Vector2i(-1, 0)
+			if entrada == Vector2i(1, 0): return Vector2i(0, 1)
+		19:
+			if entrada == Vector2i(0, 1): return Vector2i(-1, 0)
+			if entrada == Vector2i(1, 0): return Vector2i(0, -1)
+		20:
+			if entrada == Vector2i(0, 1): return Vector2i(1, 0)
+			if entrada == Vector2i(-1, 0): return Vector2i(0, -1)
+		21:
+			if entrada == Vector2i(0, -1): return Vector2i(1, 0)
+			if entrada == Vector2i(-1, 0): return Vector2i(0, 1)
+		6: return entrada # Cruzamento -> Sempre atravessa reto
+		7:
+			if tile:
+				var possiveis = []
+				for d in [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]:
+					if d != -entrada: # Não pode voltar por onde entrou
+						var nx = tile.pos_x + d.x
+						var ny = tile.pos_y + d.y
+						if _grid_valido(nx, ny) and _eh_trilho(matriz_mapa[nx][ny]):
+							possiveis.append(d)
+				if possiveis.size() > 0:
+					return possiveis[tile.index_chave % possiveis.size()]
+	return Vector2i.ZERO
+
+func _processar_logistica_plataforma(t):
+	var carga = t.get_meta("carga")
+	var estado = t.get_meta("estado")
+	t.set_meta("tempo_espera", 3.0)
+	t.set_meta("parada_concluida", true)
+	
+	var grid_atual = t.get_meta("grid_atual")
+	var vizinhos = _get_vizinhos_edificio(grid_atual)
+	
+	if vizinhos.has(8): # Estação
+		if estado == "INDO": # Chegou pra buscar
+			t.set_meta("estado", "VOLTANDO")
+			_atualizar_visual_carga(t.get_node("Vagao"), carga, false) # Vagão enche
+			_spawn_floating_text(t.position, "CARREGADO!", Color.YELLOW)
+	elif vizinhos.has(17): # Central
+		if estado == "VOLTANDO": # Chegou pra entregar
+			t.set_meta("estado", "INDO")
+			estoque[carga] += 1
+			dinheiro += recompensas.get(carga, 0)
+			receita_semanal += recompensas.get(carga, 0)
+			_atualizar_visual_carga(t.get_node("Vagao"), carga, true) # Vagão esvazia
+			_spawn_floating_text(t.position, "ENTREGUE! +$" + str(recompensas.get(carga, 0)), Color.GREEN)
+			_atualizar_status_bar()
+			_checar_vitoria()
 
 func _verificar_colisoes():
 	var trens_lista = trens_ativos.values()
 	for i in range(trens_lista.size()):
-		var t1 = trens_lista[i]; if not is_instance_valid(t1): continue
+		var t1 = trens_lista[i];
+		if not is_instance_valid(t1): continue
 		for j in range(i + 1, trens_lista.size()):
-			var t2 = trens_lista[j]; if not is_instance_valid(t2): continue
+			var t2 = trens_lista[j];
+			if not is_instance_valid(t2): continue
 			if t1.position.distance_to(t2.position) < 50.0:
-				jogo_perdido = true; get_tree().paused = true; popup_game_over.popup_centered(); return
+				jogo_perdido = true; get_tree().paused = true; popup_game_over.popup_centered();
+				return
 
+# ==========================================
+# LANÇAMENTO (Mantém AStar apenas para verificar se pode lançar)
+# ==========================================
 func tentar_lancar_trem():
 	if get_tree().paused: return 
 	var centrais: Array[Vector2i] = []; var estacoes: Array[Vector2i] = []
@@ -556,10 +680,17 @@ func tentar_lancar_trem():
 			if matriz_mapa[x][y] == 17: centrais.append(Vector2i(x, y))
 			if matriz_mapa[x][y] == 8: estacoes.append(Vector2i(x, y))
 	if centrais.size() == 0: return
+	
 	var p_central = _buscar_plataforma_vizinha(centrais[0])
-	if p_central == Vector2i(-1, -1): _spawn_floating_text(Vector2(centrais[0].x*100+50, centrais[0].y*100+50), "FALTA PLATAFORMA!", Color.RED); return
+	if p_central == Vector2i(-1, -1): 
+		_spawn_floating_text(Vector2(centrais[0].x*100+50, centrais[0].y*100+50), "FALTA PLATAFORMA!", Color.RED);
+		return
+		
 	for est in estacoes:
-		var p_est = _buscar_plataforma_vizinha(est); if p_est == Vector2i(-1, -1): continue
+		var p_est = _buscar_plataforma_vizinha(est); 
+		if p_est == Vector2i(-1, -1): continue
+		
+		# AStar usado APENAS para dizer: "A malha tem ligação até a estação?"
 		var path_ida = _calcular_rota_trem(p_central, p_est, Vector2i(-1, -1))
 		if path_ida.size() >= 2:
 			var id = "T_%d_%d_%d" % [p_est.x, p_est.y, Time.get_ticks_msec()]
@@ -569,45 +700,85 @@ func tentar_lancar_trem():
 func _buscar_plataforma_vizinha(pos: Vector2i) -> Vector2i:
 	var dirs = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]
 	for d in dirs:
-		var n = pos + d; if n.x>=0 and n.x<tamanho_mapa and n.y>=0 and n.y<tamanho_mapa:
+		var n = pos + d;
+		if _grid_valido(n.x, n.y):
 			if matriz_mapa[n.x][n.y] == 25: return n
 	return Vector2i(-1, -1)
 
 func _spawnar_trem(pontos, id, carga, o, d):
-	var t = Node2D.new(); t.name = id; t.z_index = 20; add_child(t); trens_ativos[id] = t
-	var loc = ColorRect.new(); loc.size = Vector2(60, 40); loc.color = Color(0.1, 0.1, 0.1); loc.position = Vector2(-30, -20); t.add_child(loc)
-	var vag = ColorRect.new(); vag.name = "Vagao"; vag.size = Vector2(40, 30); vag.color = Color(0.3, 0.3, 0.3); vag.position = Vector2(-75, -15); t.add_child(vag)
-	t.set_meta("origem", o); t.set_meta("destino", d); t.set_meta("carga", carga); t.set_meta("estado", "INDO"); t.set_meta("tempo_espera", 0.0)
-	t.set_meta("pontos", pontos.duplicate()); t.set_meta("indice_alvo", 1); t.position = pontos[0]
+	var t = Node2D.new();
+	t.name = id; t.z_index = 20; add_child(t); trens_ativos[id] = t
+	var loc = ColorRect.new(); loc.size = Vector2(60, 40);
+	loc.color = Color(0.1, 0.1, 0.1); loc.position = Vector2(-30, -20); t.add_child(loc)
+	var vag = ColorRect.new(); vag.name = "Vagao"; vag.size = Vector2(40, 30);
+	vag.color = Color(0.3, 0.3, 0.3); vag.position = Vector2(-75, -15); t.add_child(vag)
+	
+	t.set_meta("origem", o); t.set_meta("destino", d); t.set_meta("carga", carga); 
+	t.set_meta("estado", "INDO"); t.set_meta("tempo_espera", 0.0)
+	
+	# --- Conversão do Caminho em Direção Inicial Realista ---
+	var p_ini = Vector2i(int(pontos[0].x/100.0), int(pontos[0].y/100.0))
+	var p_next = Vector2i(int(pontos[1].x/100.0), int(pontos[1].y/100.0)) if pontos.size() > 1 else p_ini + Vector2i(1,0)
+	var d_ini = p_next - p_ini
+	if d_ini == Vector2i.ZERO: d_ini = Vector2i(1,0)
+	
+	t.set_meta("grid_atual", p_ini)
+	t.set_meta("alvo_grid", p_next)
+	t.set_meta("direcao_atual", d_ini)
+	t.set_meta("ultima_direcao_valida", d_ini)
+	t.set_meta("parada_concluida", false)
+	t.position = pontos[0]
+	
+	_atualizar_visual_carga(vag, carga, true)
 
 func _atualizar_visual_carga(vagao, carga, vazio):
 	for c in vagao.get_children(): c.queue_free()
 	vagao.color = Color(0.3, 0.3, 0.3) if vazio else Color(0.2, 0.2, 0.2)
 	if not vazio:
-		var c = ColorRect.new(); c.color = cores_carga[carga]; c.size = Vector2(30, 20); c.position = Vector2(5, 5); vagao.add_child(c)
+		var c = ColorRect.new();
+		c.color = cores_carga.get(carga, Color.WHITE); c.size = Vector2(30, 20); c.position = Vector2(5, 5);
+		vagao.add_child(c)
+
+func _grid_valido(x, y):
+	return x >= 0 and x < tamanho_mapa and y >= 0 and y < tamanho_mapa
+
+func _get_vizinhos_edificio(pos):
+	var res = []
+	for d in [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]:
+		var nx = pos.x + d.x
+		var ny = pos.y + d.y
+		if _grid_valido(nx, ny):
+			res.append(matriz_mapa[nx][ny])
+	return res
 
 # ==========================================
 # PINCEL E AUXILIARES
 # ==========================================
 func _aplicar_no_mapa(x, y, estado, reconstruir = true):
-	matriz_mapa[x][y] = estado; var t = _get_tile_at(x, y); if t: t.estado_atual = estado
+	matriz_mapa[x][y] = estado; var t = _get_tile_at(x, y);
+	if t: t.estado_atual = estado
 	if reconstruir: _reconstruir_malha()
 
 func _aplicar_estacao_oferta(x, y, tipo, reconstruir = true): 
-	estacoes_oferta[Vector2i(x, y)] = tipo; _aplicar_no_mapa(x, y, 8, reconstruir)
+	estacoes_oferta[Vector2i(x, y)] = tipo;
+	_aplicar_no_mapa(x, y, 8, reconstruir)
 
 func _get_tile_at(x, y):
 	for t in mapa_node.get_children(): if t.has_method("get_grid_pos") and t.get_grid_pos() == Vector2i(x, y): return t
 	return null
 
 func _prever_pincel_magico(x, y):
-	var t = _get_tile_at(x,y); var bioma = t.base_bioma if t else 2
-	var dirs = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]; var v = []
+	var t = _get_tile_at(x,y);
+	var bioma = t.base_bioma if t else 2
+	var dirs = [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)];
+	var v = []
 	for d in dirs:
-		var n = Vector2i(x,y)+d; if n.x>=0 and n.x<tamanho_mapa and n.y>=0 and n.y<tamanho_mapa:
+		var n = Vector2i(x,y)+d;
+		if n.x>=0 and n.x<tamanho_mapa and n.y>=0 and n.y<tamanho_mapa:
 			if _eh_trilho(matriz_mapa[n.x][n.y]): v.append(d)
 	var tipo = 3; if v.size() == 2:
-		var d1=v[0]; var d2=v[1]
+		var d1=v[0];
+		var d2=v[1]
 		if d1.x!=0 and d2.x!=0: tipo=3
 		elif d1.y!=0 and d2.y!=0: tipo=4
 		elif (d1==Vector2i(0,1) and d2==Vector2i(-1,0)) or (d2==Vector2i(0,1) and d1==Vector2i(-1,0)): tipo=18
@@ -628,22 +799,28 @@ func aplicar_pincel_magico(x, y):
 	_reconstruir_malha()
 
 func _gerar_mapa_nivel_1():
-	metas["LEITE"] = 3; metas["MADEIRA"] = 2
+	metas["LEITE"] = 3;
+	metas["MADEIRA"] = 2
 	for x in range(tamanho_mapa): _aplicar_no_mapa(x, 9, 11, false); _aplicar_no_mapa(x, 10, 11, false)
-	_aplicar_no_mapa(2, 2, 17, false); _aplicar_no_mapa(3, 2, 25, false)
+	_aplicar_no_mapa(2, 2, 17, false);
+	_aplicar_no_mapa(3, 2, 25, false)
 	_aplicar_estacao_oferta(17, 17, "LEITE", false); _aplicar_no_mapa(16, 17, 25, false)
 	_aplicar_estacao_oferta(4, 15, "MADEIRA", false); _aplicar_no_mapa(4, 14, 25, false)
 
 func _gerar_mapa_nivel_2():
-	metas["LEITE"]=2; metas["MADEIRA"]=4; metas["TRIGO"]=2
+	metas["LEITE"]=2; metas["MADEIRA"]=4;
+	metas["TRIGO"]=2
 	_aplicar_no_mapa(17, 2, 17, false); _aplicar_no_mapa(16, 2, 25, false)
 	_aplicar_estacao_oferta(2, 17, "LEITE", false); _aplicar_no_mapa(3, 17, 25, false)
-	_aplicar_estacao_oferta(2, 2, "MADEIRA", false); _aplicar_no_mapa(2, 3, 25, false)
+	_aplicar_estacao_oferta(2, 2, "MADEIRA", false);
+	_aplicar_no_mapa(2, 3, 25, false)
 	_aplicar_estacao_oferta(17, 17, "TRIGO", false); _aplicar_no_mapa(17, 16, 25, false)
 
 func _gerar_mapa_nivel_3():
 	metas["TRIGO"]=2; metas["ACO"]=3; metas["CARVAO"]=2
-	_aplicar_no_mapa(2, 2, 17, false); _aplicar_no_mapa(2, 3, 25, false)
+	_aplicar_no_mapa(2, 2, 17, false);
+	_aplicar_no_mapa(2, 3, 25, false)
 	_aplicar_estacao_oferta(17, 2, "ACO", false); _aplicar_no_mapa(17, 3, 25, false)
-	_aplicar_estacao_oferta(2, 17, "CARVAO", false); _aplicar_no_mapa(3, 17, 25, false)
+	_aplicar_estacao_oferta(2, 17, "CARVAO", false);
+	_aplicar_no_mapa(3, 17, 25, false)
 	_aplicar_estacao_oferta(17, 17, "TRIGO", false); _aplicar_no_mapa(16, 17, 25, false)

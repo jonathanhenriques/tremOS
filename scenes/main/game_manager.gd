@@ -1,4 +1,4 @@
-# game_manager.gd - Versão Completa (Trem Reativo "Sempre em Frente" + Alerta)
+# game_manager.gd
 extends Node2D
 
 # --- CONFIGURAÇÕES GERAIS E EXPORTS ---
@@ -61,13 +61,13 @@ var metas = {"LEITE": 0, "MADEIRA": 0, "TRIGO": 0, "ACO": 0, "CARVAO": 0}
 var recompensas = {"LEITE": 200, "MADEIRA": 150, "TRIGO": 180, "ACO": 300, "CARVAO": 250}
 var cores_carga = {"LEITE": Color.WHITE, "MADEIRA": Color("#8b5a2b"), "TRIGO": Color("#f5deb3"), "ACO": Color("#a9a9a9"), "CARVAO": Color("#2f4f4f")}
 
-# Custos de construção (Incluindo 25)
+# Custos de construção
 var custos_construcao = {3: 10, 4: 10, 18: 15, 19: 15, 20: 15, 21: 15, 5: 30, 6: 40, 7: 50, 12: 100, 13: 100, 15: 150, 16: 150, 23: 50, 24: 50, 25: 60}
 var estacoes_oferta = {} 
 
 var categorias = {"TRILHOS": [22, 7, 23], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8, 25]}
 
-# Dicionário de Nomes (CORREÇÃO: Caracteres especiais e ID 25)
+# Dicionário de Nomes
 var nomes_tiles = {
 	0: "BORRACHA", 1: "SELEÇÃO", 2: "TERRA", 3: "TRILHO H", 4: "TRILHO V", 
 	18: "┐ S-O", 19: "┘ N-O", 20: "└ N-L", 21: "┌ S-L", 5: "BIFURC. Y", 
@@ -522,7 +522,6 @@ func _processar_movimento_trens(delta):
 		var t = trens_ativos[id]
 		if not is_instance_valid(t): continue
 
-		# 1. Se estiver esperando (carga ou semáforo), decrementa o tempo
 		var tempo_espera = t.get_meta("tempo_espera", 0.0)
 		if tempo_espera > 0.0:
 			t.set_meta("tempo_espera", tempo_espera - delta)
@@ -530,7 +529,6 @@ func _processar_movimento_trens(delta):
 
 		var dir_atual = t.get_meta("direcao_atual")
 
-		# --- LÓGICA DO ALERTA AMARELO (?) ---
 		if dir_atual == Vector2i.ZERO:
 			if not t.has_node("StuckAlert"):
 				var alert = Label.new()
@@ -545,17 +543,13 @@ func _processar_movimento_trens(delta):
 				alert.z_index = 51
 				t.add_child(alert)
 			
-			# Tenta acordar o trem (caso o jogador tenha desenhado um trilho na frente dele)
 			_decidir_proximo_passo(t, t.get_meta("grid_atual"), t.get_meta("ultima_direcao_valida"))
 			continue
 		else:
-			# Remove o alerta quando voltar a andar
 			if t.has_node("StuckAlert"):
 				t.get_node("StuckAlert").queue_free()
 
-		# 2. Movimentação Física e Rotação
 		var alvo_grid = t.get_meta("alvo_grid")
-		# CORREÇÃO PARA EVITAR ERRO DE OPERANDO: Casting individual dos inteiros para float
 		var pos_alvo_pixel = Vector2(float(alvo_grid.x), float(alvo_grid.y)) * 100.0 + Vector2(50.0, 50.0)
 		
 		var vel = 250.0 * (verba_trens / 100.0) * (verba_vias / 100.0)
@@ -564,13 +558,11 @@ func _processar_movimento_trens(delta):
 		var angulo_alvo = Vector2(dir_atual).angle()
 		t.rotation = lerp_angle(t.rotation, angulo_alvo, 10.0 * delta)
 
-		# 3. Chegou no centro do tile alvo? Lê o trilho e decide para onde ir
 		if t.position.distance_to(pos_alvo_pixel) < 1.0:
 			t.set_meta("grid_atual", alvo_grid)
 			_decidir_proximo_passo(t, alvo_grid, dir_atual)
 
 func _decidir_proximo_passo(t, grid_atual: Vector2i, dir_vinda: Vector2i):
-	# Segurança se sair do mapa
 	if not _grid_valido(grid_atual.x, grid_atual.y):
 		t.set_meta("direcao_atual", Vector2i.ZERO)
 		t.set_meta("ultima_direcao_valida", dir_vinda)
@@ -579,7 +571,6 @@ func _decidir_proximo_passo(t, grid_atual: Vector2i, dir_vinda: Vector2i):
 	var tipo = matriz_mapa[grid_atual.x][grid_atual.y]
 	var tile = _get_tile_at(grid_atual.x, grid_atual.y)
 	
-	# Plataforma
 	if tipo == 25 and not t.get_meta("parada_concluida", false):
 		_processar_logistica_plataforma(t)
 		return
@@ -587,11 +578,9 @@ func _decidir_proximo_passo(t, grid_atual: Vector2i, dir_vinda: Vector2i):
 	if tipo != 25:
 		t.set_meta("parada_concluida", false)
 
-	# Semáforo
 	if (tipo == 23 or tipo == 24) and tile and not tile.semaforo_aberto:
-		return # Fica parado
+		return 
 
-	# Descobre a próxima direção
 	var nova_dir = _obter_saida_fisica(tipo, dir_vinda, tile)
 	
 	if nova_dir == Vector2i.ZERO:
@@ -618,18 +607,26 @@ func _obter_saida_fisica(tipo, entrada: Vector2i, tile) -> Vector2i:
 		21:
 			if entrada == Vector2i(0, -1): return Vector2i(1, 0)
 			if entrada == Vector2i(-1, 0): return Vector2i(0, 1)
-		6: return entrada # Cruzamento -> Sempre atravessa reto
+		6: return entrada 
 		7:
 			if tile:
-				var possiveis = []
+				var viz = []
 				for d in [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]:
-					if d != -entrada: # Não pode voltar por onde entrou
-						var nx = tile.pos_x + d.x
-						var ny = tile.pos_y + d.y
-						if _grid_valido(nx, ny) and _eh_trilho(matriz_mapa[nx][ny]):
-							possiveis.append(d)
-				if possiveis.size() > 0:
-					return possiveis[tile.index_chave % possiveis.size()]
+					var nx = tile.pos_x + d.x
+					var ny = tile.pos_y + d.y
+					if _grid_valido(nx, ny) and _eh_trilho(matriz_mapa[nx][ny]):
+						viz.append(d)
+				
+				if viz.size() > 0:
+					# LÓGICA SINCRONIZADA COM A SETA VISUAL:
+					var dir_preferida = viz[tile.index_chave % viz.size()]
+					
+					if dir_preferida != -entrada:
+						return dir_preferida
+					else:
+						# Se a seta aponta contra o trem, ele desvia para outra rota válida
+						for d in viz:
+							if d != -entrada: return d
 	return Vector2i.ZERO
 
 func _processar_logistica_plataforma(t):
@@ -642,17 +639,17 @@ func _processar_logistica_plataforma(t):
 	var vizinhos = _get_vizinhos_edificio(grid_atual)
 	
 	if vizinhos.has(8): # Estação
-		if estado == "INDO": # Chegou pra buscar
+		if estado == "INDO": 
 			t.set_meta("estado", "VOLTANDO")
-			_atualizar_visual_carga(t.get_node("Vagao"), carga, false) # Vagão enche
+			_atualizar_visual_carga(t.get_node("Vagao"), carga, false) 
 			_spawn_floating_text(t.position, "CARREGADO!", Color.YELLOW)
 	elif vizinhos.has(17): # Central
-		if estado == "VOLTANDO": # Chegou pra entregar
+		if estado == "VOLTANDO": 
 			t.set_meta("estado", "INDO")
 			estoque[carga] += 1
 			dinheiro += recompensas.get(carga, 0)
 			receita_semanal += recompensas.get(carga, 0)
-			_atualizar_visual_carga(t.get_node("Vagao"), carga, true) # Vagão esvazia
+			_atualizar_visual_carga(t.get_node("Vagao"), carga, true) 
 			_spawn_floating_text(t.position, "ENTREGUE! +$" + str(recompensas.get(carga, 0)), Color.GREEN)
 			_atualizar_status_bar()
 			_checar_vitoria()
@@ -670,7 +667,7 @@ func _verificar_colisoes():
 				return
 
 # ==========================================
-# LANÇAMENTO (Mantém AStar apenas para verificar se pode lançar)
+# LANÇAMENTO
 # ==========================================
 func tentar_lancar_trem():
 	if get_tree().paused: return 
@@ -690,7 +687,6 @@ func tentar_lancar_trem():
 		var p_est = _buscar_plataforma_vizinha(est); 
 		if p_est == Vector2i(-1, -1): continue
 		
-		# AStar usado APENAS para dizer: "A malha tem ligação até a estação?"
 		var path_ida = _calcular_rota_trem(p_central, p_est, Vector2i(-1, -1))
 		if path_ida.size() >= 2:
 			var id = "T_%d_%d_%d" % [p_est.x, p_est.y, Time.get_ticks_msec()]
@@ -716,7 +712,6 @@ func _spawnar_trem(pontos, id, carga, o, d):
 	t.set_meta("origem", o); t.set_meta("destino", d); t.set_meta("carga", carga); 
 	t.set_meta("estado", "INDO"); t.set_meta("tempo_espera", 0.0)
 	
-	# --- Conversão do Caminho em Direção Inicial Realista ---
 	var p_ini = Vector2i(int(pontos[0].x/100.0), int(pontos[0].y/100.0))
 	var p_next = Vector2i(int(pontos[1].x/100.0), int(pontos[1].y/100.0)) if pontos.size() > 1 else p_ini + Vector2i(1,0)
 	var d_ini = p_next - p_ini

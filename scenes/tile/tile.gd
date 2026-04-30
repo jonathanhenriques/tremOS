@@ -1,4 +1,4 @@
-# tile.gd - Versão com Visual de Plataforma (ID 25)
+# tile.gd
 extends ColorRect
 
 # --- VARIÁVEIS DE ESTADO E REFERÊNCIAS ---
@@ -219,14 +219,11 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 	var c = Color(0, 0, 0, alpha);
 	var font = get_theme_default_font();
 	
-	# --- VISUAL DA PLATAFORMA (ID 25) ---
 	if estado == 25:
-		draw_rect(Rect2(0, 0, 100, 100), Color(0.4, 0.4, 0.4, alpha)) # Base cinza
-		# Listras de alerta amarelas (Soko Style)
+		draw_rect(Rect2(0, 0, 100, 100), Color(0.4, 0.4, 0.4, alpha)) 
 		for i in range(5):
 			draw_line(Vector2(i*20, 0), Vector2(i*20+10, 10), Color(1, 0.8, 0, alpha), 4.0)
 			draw_line(Vector2(i*20, 90), Vector2(i*20+10, 100), Color(1, 0.8, 0, alpha), 4.0)
-		# Desenha um trilho horizontal simples por cima
 		draw_line(Vector2(0, 45), Vector2(100, 45), c, 4.0)
 		draw_line(Vector2(0, 55), Vector2(100, 55), c, 4.0)
 
@@ -247,8 +244,27 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 		for d in d_list:
 			var n = gm_ref._get_tile_at(pos_x + d.x, pos_y + d.y)
 			if n and gm_ref._eh_trilho(n.estado_atual): viz.append(d)
+			
 		for d in viz: draw_line(Vector2(50, 50), Vector2(50, 50) + Vector2(d.x, d.y) * 50, c, 8.0)
-		if estado == 7: draw_circle(Vector2(50, 50), 16.0, c)
+		
+		if estado == 7: 
+			draw_circle(Vector2(50, 50), 16.0, c)
+			
+			# --- NOVA SETA DE INDICAÇÃO AMARELA ---
+			if viz.size() > 0:
+				var dir_ativa = viz[index_chave % viz.size()]
+				var centro = Vector2(50, 50)
+				var ponta = centro + Vector2(dir_ativa) * 35
+				
+				# Linha principal da seta amarela
+				draw_line(centro, ponta, Color.YELLOW, 6.0)
+				
+				# Triângulo na ponta da seta
+				var perp = Vector2(-dir_ativa.y, dir_ativa.x) * 10
+				var p1 = ponta - Vector2(dir_ativa) * 15 + perp
+				var p2 = ponta - Vector2(dir_ativa) * 15 - perp
+				draw_colored_polygon(PackedVector2Array([ponta, p1, p2]), Color.YELLOW)
+			# --------------------------------------
 
 	if estado == 23 or estado == 24: 
 		draw_circle(Vector2(50, 22) if estado==23 else Vector2(22, 50), 5, Color(0, 1, 0, alpha) if semaforo_aberto else Color(1, 0, 0, alpha))

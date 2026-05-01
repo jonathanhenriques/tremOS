@@ -784,6 +784,11 @@ func _decidir_proximo_passo(t, grid_atual: Vector2i, dir_vinda: Vector2i):
 		t.set_meta("direcao_atual", nova_dir)
 		t.set_meta("alvo_grid", grid_atual + nova_dir)
 		t.set_meta("ultima_direcao_valida", nova_dir)
+		
+		# --- GATILHO DA SETA AZUL: Puxado assim que o trem inicia a travessia! ---
+		if tile and tile.has_method("disparar_gatilho_inteligente"):
+			tile.disparar_gatilho_inteligente()
+
 
 func _obter_saida_fisica(tipo, entrada: Vector2i, tile) -> Vector2i:
 	if not tile or not tile.has_method("permite_saida"): 
@@ -845,23 +850,28 @@ func _obter_saida_fisica(tipo, entrada: Vector2i, tile) -> Vector2i:
 				if _grid_valido(nx, ny) and _eh_trilho(matriz_mapa[nx][ny]): 
 					viz_fisicos.append(d)
 
-			# === MODIFICAÇÃO INICIA AQUI ===
-			# Validamos se a chave está no estado com Seta ou no novo estado "Sem Seta"
+			# --- RESTAURANDO A LEITURA DAS CHAVES (AMARELA vs AZUL INTELIGENTE) ---
 			if viz_fisicos.size() > 0:
-				var idx_real = tile.index_chave % (viz_fisicos.size() + 1)
+				var qtd_saidas = viz_fisicos.size()
 				
-				# Se for menor, a seta aponta para uma direção forçada
-				if idx_real < viz_fisicos.size():
-					var dir_preferida = viz_fisicos[idx_real] as Vector2i
+				if tile.index_chave < qtd_saidas:
+					# Opção 1: Setas Amarelas (Fixas)
+					var dir_preferida = viz_fisicos[tile.index_chave] as Vector2i
 					if dir_preferida in viz_validos: 
 						return dir_preferida
+						
+				elif tile.index_chave > qtd_saidas:
+					# Opção 2: Setas Azuis (Inteligentes - Divisor de Carga)
+					var idx_azul = tile.index_chave - qtd_saidas - 1
+					var dir_preferida = viz_fisicos[idx_azul] as Vector2i
+					if dir_preferida in viz_validos: 
+						return dir_preferida
+			# ----------------------------------------------------------------------
 
-			# Se chegou até aqui, significa que estava no estado "Sem Seta" (idx_real == viz_fisicos.size()).
-			# Nesse caso, o trem segue seu fluxo natural (em frente se puder).
+			# Se chegou até aqui, está no estado "Sem Seta" (Neutro)
 			if entrada in viz_validos: 
 				return entrada
 			return viz_validos[0]
-			# === MODIFICAÇÃO TERMINA AQUI ===
 
 	if saida_geo != Vector2i.ZERO and _is_valid_exit(pos_grid, saida_geo, entrada, tile):
 		return saida_geo

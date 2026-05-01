@@ -73,10 +73,19 @@ func _gui_input(event):
 				elif estado_atual in [23, 24]:
 					semaforo_aberto = not semaforo_aberto
 				elif gm_ref._eh_trilho(estado_atual) and estado_atual != 6:
+					
+					# --- RESTAURANDO O CICLO COMPLETO NAS CHAVES ---
 					if estado_atual in [5, 7]:
-						index_chave += 1
+						var v_reais = _get_vizinhos_trilho()
+						# Ciclo: Setas Amarelas -> Neutro -> Setas Azuis
+						var max_estados = (v_reais.size() * 2) + 1
+						if max_estados > 1:
+							index_chave = (index_chave + 1) % max_estados
 					else:
-						sentido_via = (sentido_via + 1) % 4
+						# Trilhos Normais mantêm a Seta Azul Alternada (0 a 5)
+						sentido_via = (sentido_via + 1) % 6
+					# -----------------------------------------------
+						
 					gm_ref._reconstruir_malha()
 				queue_redraw()
 				return 
@@ -107,14 +116,22 @@ func permite_saida(d: Vector2i) -> bool:
 	if sentido_via == 0 or sentido_via == 3: return gm_ref._tem_saida(estado_atual, d)
 	var p = _get_ports()
 	if p.size() < 2: return gm_ref._tem_saida(estado_atual, d)
-	return d == p[1] if sentido_via == 1 else d == p[0]
+	
+	# Agora reconhece os IDs Inteligentes 4 e 5
+	if sentido_via == 1 or sentido_via == 4: return d == p[1] 
+	if sentido_via == 2 or sentido_via == 5: return d == p[0]
+	return false
 
 func permite_entrada(port: Vector2i) -> bool:
 	if estado_atual == 25: return true # Plataformas nunca bloqueiam entrada
 	if sentido_via == 0 or sentido_via == 3: return gm_ref._tem_saida(estado_atual, port)
 	var p = _get_ports()
 	if p.size() < 2: return gm_ref._tem_saida(estado_atual, port)
-	return port == p[0] if sentido_via == 1 else port == p[1]
+	
+	# Agora reconhece os IDs Inteligentes 4 e 5
+	if sentido_via == 1 or sentido_via == 4: return port == p[0] 
+	if sentido_via == 2 or sentido_via == 5: return port == p[1]
+	return false
 
 # ==========================================
 # VISUAL E DESENHO
@@ -156,19 +173,24 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 		for d in v_reais:
 			draw_line(Vector2(50.0, 50.0), Vector2(50.0, 50.0) + Vector2(float(d.x), float(d.y)) * 50.0, c, 8.0)
 		
-		# === MODIFICAÇÃO INICIA AQUI ===
-		# Chaves e Bifurcações agora ganham o estado "Sem Seta" (Neutro)
+		# --- DESENHO DAS SETAS DE CHAVES (AMARELA vs AZUL) ---
 		if estado in [5, 7]:
 			draw_circle(Vector2(50, 50), 16.0, c)
 			if v_reais.size() > 0:
-				# Adicionamos +1 no módulo para criar um ciclo fantasma que representa a via livre
-				var idx_real = index_chave % (v_reais.size() + 1)
-				
-				# Se for menor, desenha a seta normal. Se for igual, cai no estado "Sem Seta" e omite o desenho.
-				if idx_real < v_reais.size(): 
-					var dir_viz = v_reais[idx_real]
+				var qtd_saidas = v_reais.size()
+				if index_chave < qtd_saidas:
+					# Fase 1: Setas Amarelas Comuns
+					var dir_viz = v_reais[index_chave]
 					_draw_arrow(Vector2(50, 50), Vector2(50, 50) + Vector2(float(dir_viz.x), float(dir_viz.y)) * 35.0, Color.YELLOW)
-		# === MODIFICAÇÃO TERMINA AQUI ===
+				elif index_chave == qtd_saidas:
+					# Fase 2: Sem Seta (Neutro)
+					pass
+				else:
+					# Fase 3: Setas Azuis Inteligentes
+					var idx_azul = index_chave - qtd_saidas - 1
+					var dir_viz = v_reais[idx_azul]
+					_draw_arrow(Vector2(50, 50), Vector2(50, 50) + Vector2(float(dir_viz.x), float(dir_viz.y)) * 35.0, Color.CYAN)
+		# -----------------------------------------------------
 
 	if estado not in [17, 8, 5, 6, 7, 25] and gm_ref._eh_trilho(estado):
 		var v_reais = _get_vizinhos_trilho()
@@ -176,11 +198,12 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 			var p1 = Vector2(50.0, 50.0) + Vector2(float(v_reais[0].x), float(v_reais[0].y)) * 30.0
 			var p2 = Vector2(50.0, 50.0) + Vector2(float(v_reais[1].x), float(v_reais[1].y)) * 30.0
 			
-			# Aqui os seus 4 estados originais são aplicados perfeitamente (0 é oculto)
 			if sentido_via == 1: _draw_arrow(p1, p2, Color.YELLOW)
 			elif sentido_via == 2: _draw_arrow(p2, p1, Color.YELLOW)
 			elif sentido_via == 3: 
 				_draw_arrow(Vector2(50,50), p1, Color.YELLOW); _draw_arrow(Vector2(50,50), p2, Color.YELLOW)
+			elif sentido_via == 4: _draw_arrow(p1, p2, Color.CYAN) # Azul A
+			elif sentido_via == 5: _draw_arrow(p2, p1, Color.CYAN) # Azul B
 
 	if estado in [23, 24]: 
 		draw_circle(Vector2(50, 22) if estado==23 else Vector2(22, 50), 6, Color.GREEN if semaforo_aberto else Color.RED)
@@ -190,9 +213,6 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 		draw_rect(Rect2(5, 5, 90, 90), cor_base)
 		var texto = "BASE" if estado == 17 else gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "LOG")
 		draw_string(font, Vector2(10, 55), texto, HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.WHITE)
-
-
-
 
 func _draw_arrow(from: Vector2, to: Vector2, color: Color):
 	draw_line(from, to, color, 4.0)
@@ -220,3 +240,23 @@ func _aplicar_estado():
 	var tool = gm_ref.estado_selecionado
 	if gm_ref.gastar_dinheiro(tool, Vector2(float(pos_x*100), float(pos_y*100))):
 		estado_atual = tool; gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual); queue_redraw()
+
+func disparar_gatilho_inteligente():
+	# Lógica para Chaves e Bifurcações (Gira a Seta Azul para a próxima saída)
+	if estado_atual in [5, 7]:
+		var v_reais = _get_vizinhos_trilho()
+		var qtd_saidas = v_reais.size()
+		if qtd_saidas > 0 and index_chave > qtd_saidas:
+			var idx_azul = index_chave - qtd_saidas - 1
+			idx_azul = (idx_azul + 1) % qtd_saidas
+			index_chave = qtd_saidas + 1 + idx_azul
+			queue_redraw()
+			
+	# Lógica para Trilhos Retos/Curvas (Inverte o lado em 180º)
+	elif gm_ref._eh_trilho(estado_atual) and estado_atual not in [6, 25]:
+		if sentido_via == 4:
+			sentido_via = 5
+			queue_redraw()
+		elif sentido_via == 5:
+			sentido_via = 4
+			queue_redraw()

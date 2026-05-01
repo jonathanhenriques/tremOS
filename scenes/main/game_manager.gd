@@ -845,19 +845,29 @@ func _obter_saida_fisica(tipo, entrada: Vector2i, tile) -> Vector2i:
 				if _grid_valido(nx, ny) and _eh_trilho(matriz_mapa[nx][ny]): 
 					viz_fisicos.append(d)
 
+			# === MODIFICAÇÃO INICIA AQUI ===
+			# Validamos se a chave está no estado com Seta ou no novo estado "Sem Seta"
 			if viz_fisicos.size() > 0:
-				var dir_preferida = viz_fisicos[tile.index_chave % viz_fisicos.size()] as Vector2i
-				if dir_preferida in viz_validos: 
-					return dir_preferida
+				var idx_real = tile.index_chave % (viz_fisicos.size() + 1)
+				
+				# Se for menor, a seta aponta para uma direção forçada
+				if idx_real < viz_fisicos.size():
+					var dir_preferida = viz_fisicos[idx_real] as Vector2i
+					if dir_preferida in viz_validos: 
+						return dir_preferida
 
+			# Se chegou até aqui, significa que estava no estado "Sem Seta" (idx_real == viz_fisicos.size()).
+			# Nesse caso, o trem segue seu fluxo natural (em frente se puder).
 			if entrada in viz_validos: 
 				return entrada
 			return viz_validos[0]
+			# === MODIFICAÇÃO TERMINA AQUI ===
 
 	if saida_geo != Vector2i.ZERO and _is_valid_exit(pos_grid, saida_geo, entrada, tile):
 		return saida_geo
 		
 	return Vector2i.ZERO
+
 
 func _processar_logistica_plataforma(t):
 	var carga = t.get_meta("carga")

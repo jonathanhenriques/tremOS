@@ -155,17 +155,28 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 		var v_reais = _get_vizinhos_trilho()
 		for d in v_reais:
 			draw_line(Vector2(50.0, 50.0), Vector2(50.0, 50.0) + Vector2(float(d.x), float(d.y)) * 50.0, c, 8.0)
+		
+		# === MODIFICAÇÃO INICIA AQUI ===
+		# Chaves e Bifurcações agora ganham o estado "Sem Seta" (Neutro)
 		if estado in [5, 7]:
 			draw_circle(Vector2(50, 50), 16.0, c)
 			if v_reais.size() > 0:
-				var dir_viz = v_reais[index_chave % v_reais.size()]
-				_draw_arrow(Vector2(50, 50), Vector2(50, 50) + Vector2(float(dir_viz.x), float(dir_viz.y)) * 35.0, Color.YELLOW)
+				# Adicionamos +1 no módulo para criar um ciclo fantasma que representa a via livre
+				var idx_real = index_chave % (v_reais.size() + 1)
+				
+				# Se for menor, desenha a seta normal. Se for igual, cai no estado "Sem Seta" e omite o desenho.
+				if idx_real < v_reais.size(): 
+					var dir_viz = v_reais[idx_real]
+					_draw_arrow(Vector2(50, 50), Vector2(50, 50) + Vector2(float(dir_viz.x), float(dir_viz.y)) * 35.0, Color.YELLOW)
+		# === MODIFICAÇÃO TERMINA AQUI ===
 
 	if estado not in [17, 8, 5, 6, 7, 25] and gm_ref._eh_trilho(estado):
 		var v_reais = _get_vizinhos_trilho()
 		if v_reais.size() == 2:
 			var p1 = Vector2(50.0, 50.0) + Vector2(float(v_reais[0].x), float(v_reais[0].y)) * 30.0
 			var p2 = Vector2(50.0, 50.0) + Vector2(float(v_reais[1].x), float(v_reais[1].y)) * 30.0
+			
+			# Aqui os seus 4 estados originais são aplicados perfeitamente (0 é oculto)
 			if sentido_via == 1: _draw_arrow(p1, p2, Color.YELLOW)
 			elif sentido_via == 2: _draw_arrow(p2, p1, Color.YELLOW)
 			elif sentido_via == 3: 
@@ -179,6 +190,9 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 		draw_rect(Rect2(5, 5, 90, 90), cor_base)
 		var texto = "BASE" if estado == 17 else gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "LOG")
 		draw_string(font, Vector2(10, 55), texto, HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.WHITE)
+
+
+
 
 func _draw_arrow(from: Vector2, to: Vector2, color: Color):
 	draw_line(from, to, color, 4.0)

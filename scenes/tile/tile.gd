@@ -62,36 +62,38 @@ func get_grid_pos() -> Vector2i: return Vector2i(pos_x, pos_y)
 func _gui_input(event):
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT:
-			if estado_atual == 17 or estado_atual == 8:
-				if gm_ref.estado_selecionado != 0: 
-					gm_ref.tentar_lancar_trem()
-					return
 			
+			# Se estivermos com a ferramenta de Lançar Trem (27), usamos a lógica de spawn
+			if gm_ref.estado_selecionado == 27:
+				gm_ref.lancar_trem_manual(pos_x, pos_y)
+				return
+			
+			# Lógica de Seleção (ID 1) e Conserto de Trilhos [cite: 45, 46]
 			if gm_ref.estado_selecionado == 1: 
 				if gm_ref.trilhos_quebrados.has(Vector2i(pos_x, pos_y)): 
 					gm_ref.consertar_trilho(pos_x, pos_y)
 				elif estado_atual in [23, 24]:
 					semaforo_aberto = not semaforo_aberto
 				elif gm_ref._eh_trilho(estado_atual) and estado_atual != 6:
-					
-					# --- RESTAURANDO O CICLO COMPLETO NAS CHAVES ---
 					if estado_atual in [5, 7]:
 						var v_reais = _get_vizinhos_trilho()
-						# Ciclo: Setas Amarelas -> Neutro -> Setas Azuis
 						var max_estados = (v_reais.size() * 2) + 1
 						if max_estados > 1:
 							index_chave = (index_chave + 1) % max_estados
 					else:
-						# Trilhos Normais mantêm a Seta Azul Alternada (0 a 5)
 						sentido_via = (sentido_via + 1) % 6
-					# -----------------------------------------------
-						
 					gm_ref._reconstruir_malha()
 				queue_redraw()
 				return 
 				
+			# Lógica de Apagar (ID 0) ou Pincel Mágico (ID 22) [cite: 47]
 			if gm_ref.estado_selecionado == 0: _apagar_tile(); return
 			if gm_ref.estado_selecionado == 22: _update_brush(); return
+			
+			# Bloqueio para não construir sobre Prédios Principais
+			if estado_atual in [17, 8]: return
+			
+			# Aplica a ferramenta atual (Biomas, Estruturas ou Spawn de Trem)
 			_aplicar_estado()
 			
 		if event.button_index == MOUSE_BUTTON_RIGHT: 
@@ -239,8 +241,20 @@ func _apagar_tile():
 
 func _aplicar_estado():
 	var tool = gm_ref.estado_selecionado
+	
+	# --- LÓGICA DE PINCEL DE TREM ---
+	# Se a ferramenta selecionada for Lançar Trem (27), não alteramos a matriz_mapa.
+	# Apenas chamamos o spawn e encerramos a função.
+	if tool == 27:
+		gm_ref.lancar_trem_manual(pos_x, pos_y)
+		return
+	
+	# Lógica normal de construção para biomas e estruturas
 	if gm_ref.gastar_dinheiro(tool, Vector2(float(pos_x*100), float(pos_y*100))):
-		estado_atual = tool; gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual); queue_redraw()
+		estado_atual = tool
+		gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual)
+		queue_redraw()
+
 
 func disparar_gatilho_inteligente():
 	# --- NOVA LÓGICA PARA CHAVES E BIFURCAÇÕES (INVERSÃO DE EIXO) ---
@@ -274,3 +288,7 @@ func disparar_gatilho_inteligente():
 		elif sentido_via == 5:
 			sentido_via = 4
 			queue_redraw()
+			
+			
+			
+			

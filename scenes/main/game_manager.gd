@@ -66,13 +66,12 @@ var cores_carga = {"LEITE": Color.WHITE, "MADEIRA": Color("#8b5a2b"), "TRIGO": C
 
 var estacoes_oferta = {} 
 
-# Remova o 25 dos custos e nomes
-var custos_construcao = {3: 10, 4: 10, 18: 15, 19: 15, 20: 15, 21: 15, 5: 30, 6: 40, 7: 50, 12: 100, 13: 100, 15: 150, 16: 150, 23: 50, 24: 50}
-var nomes_tiles = {0: "BORRACHA", 1: "SELEÇÃO", 2: "TERRA", 3: "TRILHO H", 4: "TRILHO V", 18: "┛ S-O", 19: "┛ N-O", 20: "┗ N-L", 21: "┏ S-L", 5: "BIFURC. Y", 6: "CRUZAM. H", 7: "CHAVE", 17: "PRINCIPAL", 8: "ESTAÇÃO", 9: "ÁRVORE", 10: "PEDRA", 11: "ÁGUA", 14: "MONTANHA", 22: "PINCEL MÁGICO", 12: "PONTE H", 13: "PONTE V", 15: "TÚNEL H", 16: "TÚNEL V", 23: "SEMÁFORO", 24: "SEMÁFORO V"}
+# Adicione o ID 27 (TREM) nos custos de construção
+var custos_construcao = {3: 10, 4: 10, 18: 15, 19: 15, 20: 15, 21: 15, 5: 30, 6: 40, 7: 50, 12: 100, 13: 100, 15: 150, 16: 150, 23: 50, 24: 50, 27: 100}
+var nomes_tiles = {0: "BORRACHA", 1: "SELEÇÃO", 2: "TERRA", 3: "TRILHO H", 4: "TRILHO V", 18: "┛ S-O", 19: "┛ N-O", 20: "┗ N-L", 21: "┏ S-L", 5: "BIFURC. Y", 6: "CRUZAM. H", 7: "CHAVE", 17: "PRINCIPAL", 8: "ESTAÇÃO", 9: "ÁRVORE", 10: "PEDRA", 11: "ÁGUA", 14: "MONTANHA", 22: "PINCEL MÁGICO", 12: "PONTE H", 13: "PONTE V", 15: "TÚNEL H", 16: "TÚNEL V", 23: "SEMÁFORO", 24: "SEMÁFORO V", 27: "LANÇAR TREM"}
 
-# Remova o 25 da categoria ESTRUTURAS
-var categorias = {"TRILHOS": [22, 7, 23], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8]}
-
+# Adicione o ID 27 na categoria TRILHOS para ele aparecer no seu menu lateral
+var categorias = {"TRILHOS": [22, 7, 23, 27], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8]}
 
 # ==========================================
 # FUNÇÕES LIFECYCLE E UPDATE
@@ -1185,3 +1184,46 @@ func _gerar_mapa_nivel_3():
 	_aplicar_no_mapa(3, 17, 25, false)
 	_aplicar_estacao_oferta(17, 17, "TRIGO", false)
 	_aplicar_no_mapa(16, 17, 25, false)
+	
+	
+	
+	# === FUNÇÃO DE LANÇAMENTO MANUAL (PERMANECE NO GAME_MANAGER.GD) ===
+# Esta função é chamada pelo Tile quando você clica nele com a ferramenta 27
+func lancar_trem_manual(x: int, y: int):
+	# 1. Verifica se as coordenadas estão dentro do mapa
+	if not _grid_valido(x, y): return
+	
+	# 2. Verifica se o clique foi em um trilho válido [cite: 21]
+	var tipo = matriz_mapa[x][y]
+	if not _eh_trilho(tipo):
+		_spawn_floating_text(Vector2(float(x*100+50), float(y*100+50)), "PRECISA DE TRILHO!", Color.RED)
+		return
+		
+	# 3. Tenta gastar o dinheiro do trem (ID 27 custa $100) [cite: 15]
+	if not gastar_dinheiro(27, Vector2(float(x*100+50), float(y*100+50))):
+		return
+
+	# 4. Obtém o tile para descobrir a direção de saída inicial
+	var tile = _get_tile_at(x, y)
+	var portas = []
+	if tile.has_method("_get_ports"):
+		portas = tile._get_ports()
+	
+	# Se for uma chave ou cruzamento sem portas fixas, usa vizinhos físicos
+	if portas.size() == 0:
+		portas = tile._get_vizinhos_trilho()
+		
+	# 5. Define os pontos de nascimento (Centro do tile e próximo tile)
+	var p1 = Vector2(float(x*100+50), float(y*100+50))
+	var p2 = p1
+	if portas.size() > 0:
+		var dir = portas[0] # O trem sempre sai pela primeira porta disponível do trilho
+		p2 = p1 + (Vector2(float(dir.x), float(dir.y)) * 100.0)
+	
+	# 6. Instancia o trem no sistema [cite: 36]
+	var id_unico = "TREM_MANUAL_%d" % Time.get_ticks_msec()
+	# Criamos o trem com carga de LEITE por padrão, voltado para a Central (-1, -1)
+	_spawnar_trem([p1, p2], id_unico, "LEITE", Vector2i(-1,-1), Vector2i(-1,-1))
+	
+	# Feedback visual
+	_spawn_floating_text(p1, "TREM LANÇADO! 🚂", Color.CYAN)

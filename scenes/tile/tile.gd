@@ -242,18 +242,31 @@ func _aplicar_estado():
 		estado_atual = tool; gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual); queue_redraw()
 
 func disparar_gatilho_inteligente():
-	# Lógica para Chaves e Bifurcações (Gira a Seta Azul para a próxima saída)
+	# --- NOVA LÓGICA PARA CHAVES E BIFURCAÇÕES (INVERSÃO DE EIXO) ---
 	if estado_atual in [5, 7]:
 		var v_reais = _get_vizinhos_trilho()
 		var qtd_saidas = v_reais.size()
+		
+		# Verifica se estamos no estado de Seta Azul (index_chave > qtd_saidas)
 		if qtd_saidas > 0 and index_chave > qtd_saidas:
-			var idx_azul = index_chave - qtd_saidas - 1
-			idx_azul = (idx_azul + 1) % qtd_saidas
-			index_chave = qtd_saidas + 1 + idx_azul
-			queue_redraw()
+			var idx_azul_atual = index_chave - qtd_saidas - 1
+			var dir_atual = v_reais[idx_azul_atual]
 			
-	# Lógica para Trilhos Retos/Curvas (Inverte o lado em 180º)
+			# Calculamos a direção exatamente oposta (Inversão de Eixo)
+			var dir_oposta = -dir_atual # Ex: (0, -1) vira (0, 1)
+			
+			# Procuramos se essa direção oposta existe fisicamente nesta chave
+			var novo_idx_azul = v_reais.find(dir_oposta)
+			
+			# Se a saída oposta existir, invertemos! 
+			# Se não existir (ex: uma chave em 'T' sem o outro lado do eixo), ela permanece onde está.
+			if novo_idx_azul != -1:
+				index_chave = qtd_saidas + 1 + novo_idx_azul
+				queue_redraw()
+			
+	# --- LÓGICA PARA TRILHOS RETOS/CURVAS (MANTIDA) ---
 	elif gm_ref._eh_trilho(estado_atual) and estado_atual not in [6, 25]:
+		# Inverte entre os estados 4 (Azul A) e 5 (Azul B)
 		if sentido_via == 4:
 			sentido_via = 5
 			queue_redraw()

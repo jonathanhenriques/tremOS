@@ -806,42 +806,29 @@ func _obter_saida_fisica(tipo, entrada: Vector2i, tile) -> Vector2i:
 		return Vector2i.ZERO
 
 	match tipo:
-		3, 23: 
-			saida_geo = entrada if entrada.x != 0 else Vector2i.ZERO
-		4, 24: 
-			saida_geo = entrada if entrada.y != 0 else Vector2i.ZERO
+		3, 23: saida_geo = entrada if entrada.x != 0 else Vector2i.ZERO
+		4, 24: saida_geo = entrada if entrada.y != 0 else Vector2i.ZERO
 		18: 
-			if entrada == Vector2i(0,-1): 
-				saida_geo = Vector2i(-1, 0)
-			elif entrada == Vector2i(1,0): 
-				saida_geo = Vector2i(0, 1)
+			if entrada == Vector2i(0,-1): saida_geo = Vector2i(-1, 0)
+			elif entrada == Vector2i(1,0): saida_geo = Vector2i(0, 1)
 		19: 
-			if entrada == Vector2i(0,1): 
-				saida_geo = Vector2i(-1, 0)
-			elif entrada == Vector2i(1,0): 
-				saida_geo = Vector2i(0, -1)
+			if entrada == Vector2i(0,1): saida_geo = Vector2i(-1, 0)
+			elif entrada == Vector2i(1,0): saida_geo = Vector2i(0, -1)
 		20: 
-			if entrada == Vector2i(0,1): 
-				saida_geo = Vector2i(1, 0)
-			elif entrada == Vector2i(-1,0): 
-				saida_geo = Vector2i(0, -1)
+			if entrada == Vector2i(0,1): saida_geo = Vector2i(1, 0)
+			elif entrada == Vector2i(-1,0): saida_geo = Vector2i(0, -1)
 		21: 
-			if entrada == Vector2i(0,-1): 
-				saida_geo = Vector2i(1, 0)
-			elif entrada == Vector2i(-1,0): 
-				saida_geo = Vector2i(0, 1)
-		6: 
-			saida_geo = entrada 
+			if entrada == Vector2i(0,-1): saida_geo = Vector2i(1, 0)
+			elif entrada == Vector2i(-1,0): saida_geo = Vector2i(0, 1)
+		6: saida_geo = entrada 
 		5, 7:
 			var viz_validos = []
 			for d in [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]:
 				if _is_valid_exit(pos_grid, d, entrada, tile): 
 					viz_validos.append(d)
 
-			if viz_validos.size() == 0: 
-				return Vector2i.ZERO
-			if viz_validos.size() == 1: 
-				return viz_validos[0]
+			if viz_validos.size() == 0: return Vector2i.ZERO
+			if viz_validos.size() == 1: return viz_validos[0]
 
 			var viz_fisicos = []
 			for d in [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]:
@@ -850,34 +837,29 @@ func _obter_saida_fisica(tipo, entrada: Vector2i, tile) -> Vector2i:
 				if _grid_valido(nx, ny) and _eh_trilho(matriz_mapa[nx][ny]): 
 					viz_fisicos.append(d)
 
-			# --- RESTAURANDO A LEITURA DAS CHAVES (AMARELA vs AZUL INTELIGENTE) ---
 			if viz_fisicos.size() > 0:
 				var qtd_saidas = viz_fisicos.size()
 				
+				# Opção 1: Setas Amarelas (Fixas)
 				if tile.index_chave < qtd_saidas:
-					# Opção 1: Setas Amarelas (Fixas)
-					var dir_preferida = viz_fisicos[tile.index_chave] as Vector2i
-					if dir_preferida in viz_validos: 
-						return dir_preferida
+					var dir_pref = viz_fisicos[tile.index_chave] as Vector2i
+					if dir_pref in viz_validos: return dir_pref
 						
+				# Opção 2: Setas Azuis (Inteligentes - Agora com Inversão de Eixo no Gatilho)
 				elif tile.index_chave > qtd_saidas:
-					# Opção 2: Setas Azuis (Inteligentes - Divisor de Carga)
 					var idx_azul = tile.index_chave - qtd_saidas - 1
-					var dir_preferida = viz_fisicos[idx_azul] as Vector2i
-					if dir_preferida in viz_validos: 
-						return dir_preferida
-			# ----------------------------------------------------------------------
+					if idx_azul < viz_fisicos.size():
+						var dir_pref = viz_fisicos[idx_azul] as Vector2i
+						if dir_pref in viz_validos: return dir_pref
 
-			# Se chegou até aqui, está no estado "Sem Seta" (Neutro)
-			if entrada in viz_validos: 
-				return entrada
+			# Estado "Sem Seta" (Neutro) ou Falha de Direção
+			if entrada in viz_validos: return entrada
 			return viz_validos[0]
 
 	if saida_geo != Vector2i.ZERO and _is_valid_exit(pos_grid, saida_geo, entrada, tile):
 		return saida_geo
 		
 	return Vector2i.ZERO
-
 
 func _processar_logistica_plataforma(t):
 	var carga = t.get_meta("carga")

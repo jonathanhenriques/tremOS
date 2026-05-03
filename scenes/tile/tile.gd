@@ -201,12 +201,19 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 	if estado in [23, 24]: 
 		draw_circle(Vector2(50, 22) if estado==23 else Vector2(22, 50), 6, Color.GREEN if semaforo_aberto else Color.RED)
 	
+	# --- VISUAL COLORIDO DAS ESTAÇÕES ---
 	if estado in [17, 8]: 
 		var cor_base = Color.MAGENTA if estado == 17 else Color.GOLD
+		
+		# Se for uma Estação (8), tentamos pegar a cor da carga que ela oferece
+		if estado == 8:
+			var tipo_carga = gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "")
+			if tipo_carga != "":
+				cor_base = gm_ref.cores_carga.get(tipo_carga, Color.GOLD)
+		
 		draw_rect(Rect2(5, 5, 90, 90), cor_base)
 		var texto = "BASE" if estado == 17 else gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "LOG")
 		draw_string(font, Vector2(10, 55), texto, HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.WHITE)
-
 
 
 func _draw_arrow(from: Vector2, to: Vector2, color: Color):
@@ -242,18 +249,21 @@ func _apagar_tile():
 func _aplicar_estado():
 	var tool = gm_ref.estado_selecionado
 	
-	# --- LÓGICA DE PINCEL DE TREM ---
-	# Se a ferramenta selecionada for Lançar Trem (27), não alteramos a matriz_mapa.
-	# Apenas chamamos o spawn e encerramos a função.
 	if tool == 27:
 		gm_ref.lancar_trem_manual(pos_x, pos_y)
 		return
 	
-	# Lógica normal de construção para biomas e estruturas
 	if gm_ref.gastar_dinheiro(tool, Vector2(float(pos_x*100), float(pos_y*100))):
 		estado_atual = tool
 		gm_ref.atualizar_matriz(pos_x, pos_y, estado_atual)
+		
+		# NOVA LÓGICA: Se for estação (ID 8), aplica a carga selecionada no menu Dev
+		if tool == 8:
+			var carga_meta = gm_ref.get_meta("carga_pincel_atual", "LEITE")
+			gm_ref.estacoes_oferta[Vector2i(pos_x, pos_y)] = carga_meta
+		
 		queue_redraw()
+
 
 
 func disparar_gatilho_inteligente():

@@ -323,14 +323,33 @@ func _abrir_sub_menu(cat):
 	for n in sub_menu_container.get_children(): 
 		n.queue_free()
 		
+	# No modo DEV, liberamos todas as categorias. Caso contrário, filtramos.
+	if not modo_dev and (cat == "BIOMAS" or cat == "ESTRUTURAS"):
+		return
+
 	for id in categorias.get(cat, []):
-		if id == 24: 
-			continue 
-		var btn = Button.new()
-		btn.text = nomes_tiles.get(id, "ITEM_" + str(id))
-		btn.custom_minimum_size = Vector2(120, 35)
-		btn.pressed.connect(_selecionar_ferramenta.bind(id))
-		sub_menu_container.add_child(btn)
+		if id == 24: continue 
+		
+		# Se estivermos em ESTRUTURAS e for uma Estação (ID 8), criamos botões para cada carga
+		if cat == "ESTRUTURAS" and id == 8:
+			for carga_nome in metas.keys():
+				var btn_est = Button.new()
+				btn_est.text = "ESTAÇÃO " + carga_nome
+				btn_est.custom_minimum_size = Vector2(140, 35)
+				# Ao clicar, selecionamos a ferramenta 8, mas configuramos um parâmetro extra
+				btn_est.pressed.connect(func(): 
+					_selecionar_ferramenta(8)
+					# Definimos uma variável temporária no GM para saber qual carga aplicar
+					self.set_meta("carga_pincel_atual", carga_nome)
+				)
+				sub_menu_container.add_child(btn_est)
+		else:
+			var btn = Button.new()
+			btn.text = nomes_tiles.get(id, "ITEM_" + str(id))
+			btn.custom_minimum_size = Vector2(120, 35)
+			btn.pressed.connect(_selecionar_ferramenta.bind(id))
+			sub_menu_container.add_child(btn)
+
 
 func _selecionar_ferramenta(id):
 	estado_selecionado = id
@@ -350,12 +369,18 @@ func _atualizar_status_bar():
 				
 		var status_texto = "PLAY" if not get_tree().paused else "PLANEJAMENTO"
 		
+		# Identificador de Modo Dev
+		var prefixo_dev = "[DEV MODE] " if modo_dev else ""
+		
 		var madeira_texto = ""
 		if madeira_construcao > 0: 
 			madeira_texto = " (Madeira: " + str(madeira_construcao) + ")"
 		
 		var nome_ferramenta = nomes_tiles.get(estado_selecionado, "PINCEL")
-		info_label.text = "[%s] T: %s | $ %d%s | FASE %d | ATIVO: %s | %s" % [status_texto, _get_tempo_formatado(), dinheiro, madeira_texto, nivel_atual, nome_ferramenta, string_metas]
+		# Adicionado o prefixo_dev na string final
+		info_label.text = "%s[%s] T: %s | $ %d%s | FASE %d | ATIVO: %s | %s" % [prefixo_dev, status_texto, _get_tempo_formatado(), dinheiro, madeira_texto, nivel_atual, nome_ferramenta, string_metas]
+
+
 
 # ==========================================
 # LÓGICA DE JOGO E ECONOMIA
@@ -868,32 +893,47 @@ func _obter_saida_fisica(tipo, entrada: Vector2i, tile) -> Vector2i:
 	return Vector2i.ZERO
 
 func _processar_logistica_passagem(t, grid_atual: Vector2i):
-	var carga = t.get_meta("carga")
+	var carga_atual = t.get_meta("carga")
 	var estado = t.get_meta("estado")
 	
-	# O trem olha para os 4 lados para ver se tem um prédio de serviço vizinho
-	var vizinhos = _get_vizinhos_edificio(grid_atual)
-	
-	# Verificamos Estações (8) para coletar carga 
-	if vizinhos.has(8): 
-		if estado == "INDO": 
-			t.set_meta("estado", "VOLTANDO")
-			_atualizar_visual_carga(t.get_node("Vagao"), carga, false) 
-			_spawn_floating_text(t.position, "CARREGADO!", Color.YELLOW)
-			_spawn_floating_text(t.position + Vector2(0, -40), "¡PIIII! 🚂", Color.WHITE)
+	# Detecta o que há ao redor do trilho
+	var vizinhos_pos = []
+	for d in [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]:
+		var n = grid_atual + d
+		if _grid_valido(n.x, n.y):
+			var tipo_v = matriz_mapa[n.x][n.y]
+			# Se encontrar uma Estação (8)
+			if tipo_v == 8:
+				var recurso_da_estacao = estacoes_oferta.get(n, "")
+				
+				# COLETAR: Se o trem está indo buscar carga
+				if estado == "INDO":
+					t.set_meta("carga", recurso_da_estacao) # Define a carga correta (ex: MADEIRA)
+					t.set_meta("estado", "VOLTANDO")
+					_atualizar_visual_carga(t.get_node("Vagao"), recurso_da_estacao, false) 
+					_spawn_floating_text(t.position, "CARREGADO: " + recurso_da_estacao, Color.YELLOW)
+					_spawn_floating_text(t.position + Vector2(0, -40), "¡PIIII! 🚂", Color.WHITE)
+					return # Processamento concluído para este tile
 
-	# Verificamos a Central Rosa (17) para entregar a carga 
-	elif vizinhos.has(17): 
-		if estado == "VOLTANDO": 
-			t.set_meta("estado", "INDO")
-			estoque[carga] += 1
-			dinheiro += recompensas.get(carga, 0)
-			receita_semanal += recompensas.get(carga, 0)
-			_atualizar_visual_carga(t.get_node("Vagao"), carga, true) 
-			_spawn_floating_text(t.position, "ENTREGUE! +$" + str(recompensas.get(carga, 0)), Color.GREEN)
-			_spawn_floating_text(t.position + Vector2(0, -40), "¡PIIII! 🚂", Color.WHITE)
-			_atualizar_status_bar()
-			_checar_vitoria()
+			# Se encontrar a Central Principal (17)
+			elif tipo_v == 17:
+				# ENTREGAR: Se o trem tem algo para descarregar
+				if estado == "VOLTANDO" and carga_atual != "":
+					estoque[carga_atual] += 1
+					dinheiro += recompensas.get(carga_atual, 0)
+					receita_semanal += recompensas.get(carga_atual, 0)
+					
+					_spawn_floating_text(t.position, "ENTREGUE: " + carga_atual + " +$" + str(recompensas.get(carga_atual, 0)), Color.GREEN)
+					_spawn_floating_text(t.position + Vector2(0, -40), "¡PIIII! 🚂", Color.WHITE)
+					
+					# Limpa o trem para a próxima viagem
+					t.set_meta("carga", "")
+					t.set_meta("estado", "INDO")
+					_atualizar_visual_carga(t.get_node("Vagao"), "", true)
+					
+					_atualizar_status_bar()
+					_checar_vitoria()
+					return
 
 
 func _verificar_colisoes():
@@ -1190,40 +1230,28 @@ func _gerar_mapa_nivel_3():
 	# === FUNÇÃO DE LANÇAMENTO MANUAL (PERMANECE NO GAME_MANAGER.GD) ===
 # Esta função é chamada pelo Tile quando você clica nele com a ferramenta 27
 func lancar_trem_manual(x: int, y: int):
-	# 1. Verifica se as coordenadas estão dentro do mapa
 	if not _grid_valido(x, y): return
-	
-	# 2. Verifica se o clique foi em um trilho válido [cite: 21]
 	var tipo = matriz_mapa[x][y]
 	if not _eh_trilho(tipo):
 		_spawn_floating_text(Vector2(float(x*100+50), float(y*100+50)), "PRECISA DE TRILHO!", Color.RED)
 		return
 		
-	# 3. Tenta gastar o dinheiro do trem (ID 27 custa $100) [cite: 15]
 	if not gastar_dinheiro(27, Vector2(float(x*100+50), float(y*100+50))):
 		return
 
-	# 4. Obtém o tile para descobrir a direção de saída inicial
 	var tile = _get_tile_at(x, y)
 	var portas = []
-	if tile.has_method("_get_ports"):
-		portas = tile._get_ports()
-	
-	# Se for uma chave ou cruzamento sem portas fixas, usa vizinhos físicos
-	if portas.size() == 0:
-		portas = tile._get_vizinhos_trilho()
+	if tile.has_method("_get_ports"): portas = tile._get_ports()
+	if portas.size() == 0: portas = tile._get_vizinhos_trilho()
 		
-	# 5. Define os pontos de nascimento (Centro do tile e próximo tile)
 	var p1 = Vector2(float(x*100+50), float(y*100+50))
 	var p2 = p1
 	if portas.size() > 0:
-		var dir = portas[0] # O trem sempre sai pela primeira porta disponível do trilho
+		var dir = portas[0]
 		p2 = p1 + (Vector2(float(dir.x), float(dir.y)) * 100.0)
 	
-	# 6. Instancia o trem no sistema [cite: 36]
 	var id_unico = "TREM_MANUAL_%d" % Time.get_ticks_msec()
-	# Criamos o trem com carga de LEITE por padrão, voltado para a Central (-1, -1)
-	_spawnar_trem([p1, p2], id_unico, "LEITE", Vector2i(-1,-1), Vector2i(-1,-1))
+	# MODIFICAÇÃO: O trem agora começa sem carga definida ("")
+	_spawnar_trem([p1, p2], id_unico, "", Vector2i(-1,-1), Vector2i(-1,-1))
 	
-	# Feedback visual
 	_spawn_floating_text(p1, "TREM LANÇADO! 🚂", Color.CYAN)

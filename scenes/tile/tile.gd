@@ -152,26 +152,38 @@ func _get_vizinhos_trilho() -> Array:
 func _desenhar_simbolo(estado, alpha, tex_node):
 	var c = Color(0, 0, 0, alpha)
 	var font = get_theme_default_font()
-	tex_node.texture = null
+	tex_node.texture = null # Limpa a textura para garantir o desenho geométrico 
 	
+	# --- RENDERIZAÇÃO DE TRILHOS (ESTILO A BUMPY RIDE) ---
+	
+	# Trilhos Retos Horizontais
 	if estado in [3, 12, 15, 23]: 
-		tex_node.texture = _tex_trilho; tex_node.rotation = 0; tex_node.modulate = Color(0.1, 0.1, 0.1, alpha)
+		_draw_trilho_simples(Vector2(0, 50), Vector2(100, 50), c)
+		
+	# Trilhos Retos Verticais
 	if estado in [4, 13, 16, 24]: 
-		tex_node.texture = _tex_trilho; tex_node.rotation = PI/2; tex_node.modulate = Color(0.1, 0.1, 0.1, alpha)
+		_draw_trilho_simples(Vector2(50, 0), Vector2(50, 100), c)
 	
+	# Curvas Suaves usando segmentos compostos
 	if estado in [18, 19, 20, 21]:
-		var p1 = Vector2(50, 50); var p2 = Vector2(50, 50)
+		var p1 = Vector2(50, 50)
+		var p2 = Vector2(50, 50)
 		if estado == 18: p1 = Vector2(50, 100); p2 = Vector2(0, 50)
 		elif estado == 19: p1 = Vector2(50, 0); p2 = Vector2(0, 50)
 		elif estado == 20: p1 = Vector2(50, 0); p2 = Vector2(100, 50)
 		elif estado == 21: p1 = Vector2(50, 100); p2 = Vector2(100, 50)
-		draw_polyline_colors(PackedVector2Array([p1, Vector2(50, 50), p2]), [c, c, c], 8.0, true)
+		
+		_draw_trilho_simples(Vector2(50, 50), p1, c)
+		_draw_trilho_simples(Vector2(50, 50), p2, c)
 	
+	# Cruzamentos e Bifurcações
 	if estado in [5, 6, 7]:
 		var v_reais = _get_vizinhos_trilho()
 		for d in v_reais:
-			draw_line(Vector2(50.0, 50.0), Vector2(50.0, 50.0) + Vector2(float(d.x), float(d.y)) * 50.0, c, 8.0)
+			var p_borda = Vector2(50.0, 50.0) + Vector2(float(d.x), float(d.y)) * 50.0
+			_draw_trilho_simples(Vector2(50.0, 50.0), p_borda, c)
 		
+		# Desenha o núcleo da chave e as Setas de Direção
 		if estado in [5, 7]:
 			draw_circle(Vector2(50, 50), 16.0, c)
 			if v_reais.size() > 0:
@@ -181,9 +193,13 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 					_draw_arrow(Vector2(50, 50), Vector2(50, 50) + Vector2(float(dir_viz.x), float(dir_viz.y)) * 35.0, Color.YELLOW)
 				elif index_chave > qtd_saidas:
 					var idx_azul = index_chave - qtd_saidas - 1
-					var dir_viz = v_reais[idx_azul]
-					_draw_arrow(Vector2(50, 50), Vector2(50, 50) + Vector2(float(dir_viz.x), float(dir_viz.y)) * 35.0, Color.CYAN)
+					if idx_azul < v_reais.size():
+						var dir_viz = v_reais[idx_azul]
+						_draw_arrow(Vector2(50, 50), Vector2(50, 50) + Vector2(float(dir_viz.x), float(dir_viz.y)) * 35.0, Color.CYAN)
 
+	# --- PRESERVAÇÃO DAS SUAS LÓGICAS ORIGINAIS DE SINALIZAÇÃO ---
+	
+	# Setas de Mão Única e Mão Dupla para trilhos comuns
 	if estado not in [17, 8, 5, 6, 7] and gm_ref._eh_trilho(estado):
 		var v_reais = _get_vizinhos_trilho()
 		if v_reais.size() == 2:
@@ -196,26 +212,26 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 			elif sentido_via == 4: _draw_arrow(p1, p2, Color.CYAN)
 			elif sentido_via == 5: _draw_arrow(p2, p1, Color.CYAN)
 
+	# Semáforos e Bloqueios
 	if estado in [23, 24]: 
 		draw_circle(Vector2(50, 22) if estado==23 else Vector2(22, 50), 6, Color.GREEN if semaforo_aberto else Color.RED)
 	
+	# Bases, Estações e Inteligência de Conexão Lateral
 	if estado in [17, 8]: 
 		var cor_base = Color.MAGENTA if estado == 17 else Color.GOLD
 		if estado == 8:
 			var tipo_carga = gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "")
 			if tipo_carga != "": cor_base = gm_ref.cores_carga.get(tipo_carga, Color.GOLD)
 		
-		# --- VISUAL: PERCEBER TRILHO AO LADO ---
+		# Mantém a indicação visual de quando a estação "percebe" o trilho vizinho
 		for d in [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]:
 			var nx = pos_x + d.x; var ny = pos_y + d.y
 			if gm_ref._grid_valido(nx, ny) and gm_ref._eh_trilho(gm_ref.matriz_mapa[nx][ny]):
 				draw_line(Vector2(50, 50), Vector2(50, 50) + Vector2(d.x, d.y) * 50, Color(0.5, 0.5, 0.5, alpha), 15.0)
-		# ---------------------------------------
 
 		draw_rect(Rect2(5, 5, 90, 90), cor_base)
 		var texto = "BASE" if estado == 17 else gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "LOG")
 		draw_string(font, Vector2(10, 55), texto, HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.WHITE)
-
 
 
 func _draw_arrow(from: Vector2, to: Vector2, color: Color):
@@ -285,3 +301,23 @@ func disparar_gatilho_inteligente():
 			sentido_via = 5; queue_redraw()
 		elif sentido_via == 5:
 			sentido_via = 4; queue_redraw()
+
+
+
+func _draw_trilho_simples(p1: Vector2, p2: Vector2, cor: Color):
+	# 1. Desenha a linha principal (espinha central do trilho)
+	draw_line(p1, p2, cor, 6.0)
+	
+	# 2. Calcula a direção e a perpendicular para traçar os dormentes
+	var dir = (p2 - p1).normalized()
+	var perp = Vector2(-dir.y, dir.x) * 12.0
+	var dist = p1.distance_to(p2)
+	
+	# 3. Define quantos dormentes cabem no trecho de forma harmônica
+	var qtd_dormentes = int(dist / 22.0)
+	
+	# 4. Desenha os dormentes transversais distribuídos pela linha
+	for i in range(1, qtd_dormentes + 1):
+		var t = float(i) / float(qtd_dormentes + 1)
+		var ponto_centro = p1.lerp(p2, t)
+		draw_line(ponto_centro - perp, ponto_centro + perp, cor, 4.0)

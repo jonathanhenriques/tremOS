@@ -179,9 +179,7 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 				if index_chave < qtd_saidas:
 					var dir_viz = v_reais[index_chave]
 					_draw_arrow(Vector2(50, 50), Vector2(50, 50) + Vector2(float(dir_viz.x), float(dir_viz.y)) * 35.0, Color.YELLOW)
-				elif index_chave == qtd_saidas:
-					pass
-				else:
+				elif index_chave > qtd_saidas:
 					var idx_azul = index_chave - qtd_saidas - 1
 					var dir_viz = v_reais[idx_azul]
 					_draw_arrow(Vector2(50, 50), Vector2(50, 50) + Vector2(float(dir_viz.x), float(dir_viz.y)) * 35.0, Color.CYAN)
@@ -201,19 +199,23 @@ func _desenhar_simbolo(estado, alpha, tex_node):
 	if estado in [23, 24]: 
 		draw_circle(Vector2(50, 22) if estado==23 else Vector2(22, 50), 6, Color.GREEN if semaforo_aberto else Color.RED)
 	
-	# --- VISUAL COLORIDO DAS ESTAÇÕES ---
 	if estado in [17, 8]: 
 		var cor_base = Color.MAGENTA if estado == 17 else Color.GOLD
-		
-		# Se for uma Estação (8), tentamos pegar a cor da carga que ela oferece
 		if estado == 8:
 			var tipo_carga = gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "")
-			if tipo_carga != "":
-				cor_base = gm_ref.cores_carga.get(tipo_carga, Color.GOLD)
+			if tipo_carga != "": cor_base = gm_ref.cores_carga.get(tipo_carga, Color.GOLD)
 		
+		# --- VISUAL: PERCEBER TRILHO AO LADO ---
+		for d in [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]:
+			var nx = pos_x + d.x; var ny = pos_y + d.y
+			if gm_ref._grid_valido(nx, ny) and gm_ref._eh_trilho(gm_ref.matriz_mapa[nx][ny]):
+				draw_line(Vector2(50, 50), Vector2(50, 50) + Vector2(d.x, d.y) * 50, Color(0.5, 0.5, 0.5, alpha), 15.0)
+		# ---------------------------------------
+
 		draw_rect(Rect2(5, 5, 90, 90), cor_base)
 		var texto = "BASE" if estado == 17 else gm_ref.estacoes_oferta.get(Vector2i(pos_x, pos_y), "LOG")
 		draw_string(font, Vector2(10, 55), texto, HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.WHITE)
+
 
 
 func _draw_arrow(from: Vector2, to: Vector2, color: Color):
@@ -267,38 +269,19 @@ func _aplicar_estado():
 
 
 func disparar_gatilho_inteligente():
-	# --- NOVA LÓGICA PARA CHAVES E BIFURCAÇÕES (INVERSÃO DE EIXO) ---
 	if estado_atual in [5, 7]:
 		var v_reais = _get_vizinhos_trilho()
 		var qtd_saidas = v_reais.size()
-		
-		# Verifica se estamos no estado de Seta Azul (index_chave > qtd_saidas)
 		if qtd_saidas > 0 and index_chave > qtd_saidas:
 			var idx_azul_atual = index_chave - qtd_saidas - 1
 			var dir_atual = v_reais[idx_azul_atual]
-			
-			# Calculamos a direção exatamente oposta (Inversão de Eixo)
-			var dir_oposta = -dir_atual # Ex: (0, -1) vira (0, 1)
-			
-			# Procuramos se essa direção oposta existe fisicamente nesta chave
+			var dir_oposta = -dir_atual
 			var novo_idx_azul = v_reais.find(dir_oposta)
-			
-			# Se a saída oposta existir, invertemos! 
-			# Se não existir (ex: uma chave em 'T' sem o outro lado do eixo), ela permanece onde está.
 			if novo_idx_azul != -1:
 				index_chave = qtd_saidas + 1 + novo_idx_azul
 				queue_redraw()
-			
-	# --- LÓGICA PARA TRILHOS RETOS/CURVAS (MANTIDA) ---
-	elif gm_ref._eh_trilho(estado_atual) and estado_atual not in [6, 25]:
-		# Inverte entre os estados 4 (Azul A) e 5 (Azul B)
+	elif gm_ref._eh_trilho(estado_atual) and estado_atual != 6:
 		if sentido_via == 4:
-			sentido_via = 5
-			queue_redraw()
+			sentido_via = 5; queue_redraw()
 		elif sentido_via == 5:
-			sentido_via = 4
-			queue_redraw()
-			
-			
-			
-			
+			sentido_via = 4; queue_redraw()

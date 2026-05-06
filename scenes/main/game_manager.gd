@@ -66,11 +66,9 @@ var cores_carga = {"LEITE": Color.WHITE, "MADEIRA": Color("#8b5a2b"), "TRIGO": C
 
 var estacoes_oferta = {} 
 
-# Adicione o ID 27 (TREM) nos custos de construção
+# Removido o 25 dos custos e nomes
 var custos_construcao = {3: 10, 4: 10, 18: 15, 19: 15, 20: 15, 21: 15, 5: 30, 6: 40, 7: 50, 12: 100, 13: 100, 15: 150, 16: 150, 23: 50, 24: 50, 27: 100}
 var nomes_tiles = {0: "BORRACHA", 1: "SELEÇÃO", 2: "TERRA", 3: "TRILHO H", 4: "TRILHO V", 18: "┛ S-O", 19: "┛ N-O", 20: "┗ N-L", 21: "┏ S-L", 5: "BIFURC. Y", 6: "CRUZAM. H", 7: "CHAVE", 17: "PRINCIPAL", 8: "ESTAÇÃO", 9: "ÁRVORE", 10: "PEDRA", 11: "ÁGUA", 14: "MONTANHA", 22: "PINCEL MÁGICO", 12: "PONTE H", 13: "PONTE V", 15: "TÚNEL H", 16: "TÚNEL V", 23: "SEMÁFORO", 24: "SEMÁFORO V", 27: "LANÇAR TREM"}
-
-# Adicione o ID 27 na categoria TRILHOS para ele aparecer no seu menu lateral
 var categorias = {"TRILHOS": [22, 7, 23, 27], "BIOMAS": [2, 11, 14, 9, 10], "ESTRUTURAS": [17, 8]}
 
 # ==========================================
@@ -794,24 +792,38 @@ func _decidir_proximo_passo(t, grid_atual: Vector2i, dir_vinda: Vector2i):
 
 	var tipo = matriz_mapa[grid_atual.x][grid_atual.y]
 	var tile = _get_tile_at(grid_atual.x, grid_atual.y)
-	
-	# --- LOGÍSTICA DE PASSAGEM (Agora em todos os trilhos) ---
-	# O trem verifica se há prédios vizinhos para carregar/descarregar enquanto passa
-	_processar_logistica_passagem(t, grid_atual)
 
-	# --- SEMÁFOROS ---
+	# 1. BATE-VOLTA NAS ESTAÇÕES E CENTRAIS
+	if _processar_logistica_passagem(t, grid_atual):
+		var dir_oposta = -dir_vinda
+		if dir_oposta == Vector2i.ZERO: dir_oposta = -t.get_meta("direcao_atual", Vector2i(-1,0))
+		if dir_oposta == Vector2i.ZERO: dir_oposta = Vector2i(-1,0)
+
+		t.set_meta("direcao_atual", dir_oposta)
+		t.set_meta("alvo_grid", grid_atual + dir_oposta)
+		t.set_meta("ultima_direcao_valida", dir_oposta)
+		return
+
+	# 2. SEMÁFOROS (Único lugar onde o trem congela e espera)
 	if (tipo == 23 or tipo == 24) and tile and not tile.semaforo_aberto:
 		t.set_meta("direcao_atual", Vector2i.ZERO)
 		t.set_meta("ultima_direcao_valida", dir_vinda)
 		return 
 
-	# BUSCA SAÍDA FÍSICA
+	# 3. BUSCA O PRÓXIMO CAMINHO
 	var nova_dir = _obter_saida_fisica(tipo, dir_vinda, tile)
-	
+
+	# 4. BATE-VOLTA NO FIM DA LINHA (O Pára-Choque Universal)
 	if nova_dir == Vector2i.ZERO:
-		t.set_meta("direcao_atual", Vector2i.ZERO)
-		t.set_meta("ultima_direcao_valida", dir_vinda)
+		var dir_oposta = -dir_vinda
+		if dir_oposta == Vector2i.ZERO: dir_oposta = -t.get_meta("direcao_atual", Vector2i(-1,0))
+		if dir_oposta == Vector2i.ZERO: dir_oposta = Vector2i(-1,0)
+
+		t.set_meta("direcao_atual", dir_oposta)
+		t.set_meta("alvo_grid", grid_atual + dir_oposta)
+		t.set_meta("ultima_direcao_valida", dir_oposta)
 	else:
+		# Continua viagem normalmente
 		t.set_meta("direcao_atual", nova_dir)
 		t.set_meta("alvo_grid", grid_atual + nova_dir)
 		t.set_meta("ultima_direcao_valida", nova_dir)
@@ -820,21 +832,12 @@ func _decidir_proximo_passo(t, grid_atual: Vector2i, dir_vinda: Vector2i):
 			tile.disparar_gatilho_inteligente()
 
 
-
 func _obter_saida_fisica(tipo, entrada: Vector2i, tile) -> Vector2i:
 	if not tile or not tile.has_method("permite_saida"): 
 		return Vector2i.ZERO
 
 	var pos_grid = Vector2i(tile.pos_x, tile.pos_y)
 	var saida_geo = Vector2i.ZERO
-
-	if tipo == 25: 
-		if _is_valid_exit(pos_grid, entrada, entrada, tile): 
-			return entrada
-		for d in [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]:
-			if _is_valid_exit(pos_grid, d, entrada, tile): 
-				return d
-		return Vector2i.ZERO
 
 	match tipo:
 		3, 23: saida_geo = entrada if entrada.x != 0 else Vector2i.ZERO
@@ -870,20 +873,15 @@ func _obter_saida_fisica(tipo, entrada: Vector2i, tile) -> Vector2i:
 
 			if viz_fisicos.size() > 0:
 				var qtd_saidas = viz_fisicos.size()
-				
-				# Opção 1: Setas Amarelas (Fixas)
 				if tile.index_chave < qtd_saidas:
 					var dir_pref = viz_fisicos[tile.index_chave] as Vector2i
 					if dir_pref in viz_validos: return dir_pref
-						
-				# Opção 2: Setas Azuis (Inteligentes - Agora com Inversão de Eixo no Gatilho)
 				elif tile.index_chave > qtd_saidas:
 					var idx_azul = tile.index_chave - qtd_saidas - 1
 					if idx_azul < viz_fisicos.size():
 						var dir_pref = viz_fisicos[idx_azul] as Vector2i
 						if dir_pref in viz_validos: return dir_pref
 
-			# Estado "Sem Seta" (Neutro) ou Falha de Direção
 			if entrada in viz_validos: return entrada
 			return viz_validos[0]
 
@@ -892,48 +890,48 @@ func _obter_saida_fisica(tipo, entrada: Vector2i, tile) -> Vector2i:
 		
 	return Vector2i.ZERO
 
-func _processar_logistica_passagem(t, grid_atual: Vector2i):
+
+func _processar_logistica_passagem(t, grid_atual: Vector2i) -> bool:
 	var carga_atual = t.get_meta("carga")
 	var estado = t.get_meta("estado")
-	
-	# Detecta o que há ao redor do trilho
-	var vizinhos_pos = []
+	var tocou_terminal = false
+
 	for d in [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]:
 		var n = grid_atual + d
 		if _grid_valido(n.x, n.y):
 			var tipo_v = matriz_mapa[n.x][n.y]
-			# Se encontrar uma Estação (8)
-			if tipo_v == 8:
-				var recurso_da_estacao = estacoes_oferta.get(n, "")
-				
-				# COLETAR: Se o trem está indo buscar carga
-				if estado == "INDO":
-					t.set_meta("carga", recurso_da_estacao) # Define a carga correta (ex: MADEIRA)
-					t.set_meta("estado", "VOLTANDO")
-					_atualizar_visual_carga(t.get_node("Vagao"), recurso_da_estacao, false) 
-					_spawn_floating_text(t.position, "CARREGADO: " + recurso_da_estacao, Color.YELLOW)
-					_spawn_floating_text(t.position + Vector2(0, -40), "¡PIIII! 🚂", Color.WHITE)
-					return # Processamento concluído para este tile
 
-			# Se encontrar a Central Principal (17)
+			# Encostou numa Estação Amarela
+			if tipo_v == 8:
+				tocou_terminal = true
+				if estado == "INDO":
+					var recurso = estacoes_oferta.get(n, "")
+					t.set_meta("carga", recurso)
+					t.set_meta("estado", "VOLTANDO")
+					_atualizar_visual_carga(t.get_node("Vagao"), recurso, false)
+					_spawn_floating_text(t.position, "CARREGADO: " + recurso, Color.YELLOW)
+					_spawn_floating_text(t.position + Vector2(0, -40), "¡PIIII! 🚂", Color.WHITE)
+
+			# Encostou na Central Rosa
 			elif tipo_v == 17:
-				# ENTREGAR: Se o trem tem algo para descarregar
+				tocou_terminal = true
 				if estado == "VOLTANDO" and carga_atual != "":
 					estoque[carga_atual] += 1
 					dinheiro += recompensas.get(carga_atual, 0)
 					receita_semanal += recompensas.get(carga_atual, 0)
 					
-					_spawn_floating_text(t.position, "ENTREGUE: " + carga_atual + " +$" + str(recompensas.get(carga_atual, 0)), Color.GREEN)
+					_spawn_floating_text(t.position, "ENTREGUE: +$" + str(recompensas.get(carga_atual, 0)), Color.GREEN)
 					_spawn_floating_text(t.position + Vector2(0, -40), "¡PIIII! 🚂", Color.WHITE)
-					
-					# Limpa o trem para a próxima viagem
+
 					t.set_meta("carga", "")
 					t.set_meta("estado", "INDO")
 					_atualizar_visual_carga(t.get_node("Vagao"), "", true)
-					
 					_atualizar_status_bar()
 					_checar_vitoria()
-					return
+
+	# Se for true, o motor vai inverter o trem 180º no próximo passo
+	return tocou_terminal
+
 
 
 func _verificar_colisoes():
@@ -997,7 +995,7 @@ func _buscar_plataforma_vizinha(pos: Vector2i) -> Vector2i:
 	return Vector2i(-1, -1)
 
 
-func _spawnar_trem(pontos, id, carga, o, d):
+func _spawnar_trem(pontos: Array[Vector2], id: String, carga: String, o: Vector2i, d: Vector2i):
 	var t = Node2D.new()
 	t.name = id
 	t.z_index = 20
@@ -1017,28 +1015,25 @@ func _spawnar_trem(pontos, id, carga, o, d):
 	vag.position = Vector2(-75, -15)
 	t.add_child(vag)
 	
-	# --- LÓGICA DE FERROMODELISMO ---
-	# O trem não tem mais "rota_atual". Ele é guiado apenas pelos trilhos.
 	t.set_meta("carga", carga)
-	t.set_meta("estado", "INDO")
+	# --- MÁGICA DO ESTADO INICIAL ---
+	# Se nasceu vazio, está INDO. Se já nasceu com carga, ele já sai VOLTANDO.
+	t.set_meta("estado", "INDO" if carga == "" else "VOLTANDO")
 	t.set_meta("tempo_espera", 0.0)
 	t.set_meta("parada_concluida", false)
 	
-	# Define a posição inicial na plataforma
 	t.position = pontos[0]
 	
-	# Calcula a direção inicial baseada na saída da plataforma
 	var p_ini = Vector2i(int(pontos[0].x/100.0), int(pontos[0].y/100.0))
 	var p_next = Vector2i(int(pontos[1].x/100.0), int(pontos[1].y/100.0))
 	var d_ini = p_next - p_ini
 	
 	t.set_meta("grid_atual", p_ini)
-	t.set_meta("direcao_atual", d_ini) # Ele começa com um impulso inicial
+	t.set_meta("direcao_atual", d_ini) 
 	t.set_meta("alvo_grid", p_next)
 	t.set_meta("ultima_direcao_valida", d_ini)
-	# --------------------------------
 	
-	_atualizar_visual_carga(vag, carga, true)
+	_atualizar_visual_carga(vag, carga, carga == "")
 
 
 func _atualizar_visual_carga(vagao, carga, vazio):
@@ -1200,58 +1195,103 @@ func _gerar_mapa_nivel_1():
 
 
 func _gerar_mapa_nivel_2():
-	metas["LEITE"]=2
-	metas["MADEIRA"]=4
-	metas["TRIGO"]=2
+	metas["LEITE"]=2; metas["MADEIRA"]=4; metas["TRIGO"]=2
 	_aplicar_no_mapa(17, 2, 17, false)
-	_aplicar_no_mapa(16, 2, 25, false)
+	_aplicar_no_mapa(16, 2, 3, false) # Trilho H no lugar da plataforma
 	_aplicar_estacao_oferta(2, 17, "LEITE", false)
-	_aplicar_no_mapa(3, 17, 25, false)
+	_aplicar_no_mapa(3, 17, 3, false) # Trilho H no lugar da plataforma
 	_aplicar_estacao_oferta(2, 2, "MADEIRA", false)
-	_aplicar_no_mapa(2, 3, 25, false)
+	_aplicar_no_mapa(2, 3, 4, false) # Trilho V no lugar da plataforma
 	_aplicar_estacao_oferta(17, 17, "TRIGO", false)
-	_aplicar_no_mapa(17, 16, 25, false)
+	_aplicar_no_mapa(17, 16, 4, false) # Trilho V no lugar da plataforma
 
 func _gerar_mapa_nivel_3():
-	metas["TRIGO"]=2
-	metas["ACO"]=3
-	metas["CARVAO"]=2
+	metas["TRIGO"]=2; metas["ACO"]=3; metas["CARVAO"]=2
 	_aplicar_no_mapa(2, 2, 17, false)
-	_aplicar_no_mapa(2, 3, 25, false)
+	_aplicar_no_mapa(2, 3, 4, false) # Trilho V no lugar da plataforma
 	_aplicar_estacao_oferta(17, 2, "ACO", false)
-	_aplicar_no_mapa(17, 3, 25, false)
+	_aplicar_no_mapa(17, 3, 4, false) # Trilho V no lugar da plataforma
 	_aplicar_estacao_oferta(2, 17, "CARVAO", false)
-	_aplicar_no_mapa(3, 17, 25, false)
+	_aplicar_no_mapa(3, 17, 3, false) # Trilho H no lugar da plataforma
 	_aplicar_estacao_oferta(17, 17, "TRIGO", false)
-	_aplicar_no_mapa(16, 17, 25, false)
-	
-	
-	
-	# === FUNÇÃO DE LANÇAMENTO MANUAL (PERMANECE NO GAME_MANAGER.GD) ===
-# Esta função é chamada pelo Tile quando você clica nele com a ferramenta 27
+	_aplicar_no_mapa(16, 17, 3, false) # Trilho H no lugar da plataforma
+
+
+
+
 func lancar_trem_manual(x: int, y: int):
 	if not _grid_valido(x, y): return
-	var tipo = matriz_mapa[x][y]
-	if not _eh_trilho(tipo):
+	var tipo_clicado = matriz_mapa[x][y]
+	
+	var p_spawn = Vector2i(x, y)
+	var tipo_trilho = tipo_clicado
+	
+	if tipo_clicado in [8, 17]:
+		var achou_trilho = false
+		for d in [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]:
+			var nx = x + d.x
+			var ny = y + d.y
+			if _grid_valido(nx, ny) and _eh_trilho(matriz_mapa[nx][ny]):
+				p_spawn = Vector2i(nx, ny)
+				tipo_trilho = matriz_mapa[nx][ny]
+				achou_trilho = true
+				break
+		
+		if not achou_trilho:
+			_spawn_floating_text(Vector2(float(x*100+50), float(y*100+50)), "SEM TRILHO VIZINHO!", Color.RED)
+			return
+	elif not _eh_trilho(tipo_clicado):
 		_spawn_floating_text(Vector2(float(x*100+50), float(y*100+50)), "PRECISA DE TRILHO!", Color.RED)
 		return
 		
-	if not gastar_dinheiro(27, Vector2(float(x*100+50), float(y*100+50))):
+	if not gastar_dinheiro(27, Vector2(float(p_spawn.x*100+50), float(p_spawn.y*100+50))):
 		return
 
-	var tile = _get_tile_at(x, y)
+	var tile = _get_tile_at(p_spawn.x, p_spawn.y)
 	var portas = []
-	if tile.has_method("_get_ports"): portas = tile._get_ports()
-	if portas.size() == 0: portas = tile._get_vizinhos_trilho()
+	if tile and tile.has_method("_get_ports"): 
+		portas = tile._get_ports()
+	if portas.size() == 0 and tile: 
+		portas = tile._get_vizinhos_trilho()
 		
-	var p1 = Vector2(float(x*100+50), float(y*100+50))
+	var p1 = Vector2(float(p_spawn.x*100+50), float(p_spawn.y*100+50))
 	var p2 = p1
+	
+	# --- PROTEÇÃO INTELIGENTE DE DIREÇÃO ---
 	if portas.size() > 0:
-		var dir = portas[0]
-		p2 = p1 + (Vector2(float(dir.x), float(dir.y)) * 100.0)
+		var dir_valida = portas[0]
+		var achou_conexao = false
+		
+		# Tenta achar uma porta que leve para outro trilho validado
+		for d in portas:
+			var nx = p_spawn.x + d.x
+			var ny = p_spawn.y + d.y
+			if _grid_valido(nx, ny) and _eh_trilho(matriz_mapa[nx][ny]):
+				dir_valida = d
+				achou_conexao = true
+				break
+		
+		# Se é fim de linha (só tem 1 trilho), EVITA apontar para dentro do prédio
+		if not achou_conexao and tipo_clicado in [8, 17]:
+			var dir_para_estacao = Vector2i(x, y) - p_spawn
+			for d in portas:
+				if d != dir_para_estacao:
+					dir_valida = d
+					break
+
+		p2 = p1 + (Vector2(float(dir_valida.x), float(dir_valida.y)) * 100.0)
+	else:
+		if tipo_trilho == 3 or tipo_trilho == 6: p2 = p1 + Vector2(100.0, 0.0)
+		elif tipo_trilho == 4: p2 = p1 + Vector2(0.0, 100.0)
+		else: p2 = p1 + Vector2(100.0, 0.0)
+	# ---------------------------------------
 	
 	var id_unico = "TREM_MANUAL_%d" % Time.get_ticks_msec()
-	# MODIFICAÇÃO: O trem agora começa sem carga definida ("")
-	_spawnar_trem([p1, p2], id_unico, "", Vector2i(-1,-1), Vector2i(-1,-1))
 	
+	# Captura o recurso da estação se o jogador clicou nela
+	var carga_inicial = ""
+	if tipo_clicado == 8:
+		carga_inicial = estacoes_oferta.get(Vector2i(x,y), "")
+		
+	_spawnar_trem([p1, p2], id_unico, carga_inicial, Vector2i(-1,-1), Vector2i(-1,-1))
 	_spawn_floating_text(p1, "TREM LANÇADO! 🚂", Color.CYAN)

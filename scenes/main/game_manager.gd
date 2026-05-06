@@ -793,7 +793,7 @@ func _decidir_proximo_passo(t, grid_atual: Vector2i, dir_vinda: Vector2i):
 	var tipo = matriz_mapa[grid_atual.x][grid_atual.y]
 	var tile = _get_tile_at(grid_atual.x, grid_atual.y)
 
-	# 1. BATE-VOLTA NAS ESTAÇÕES E CENTRAIS
+	# 1. BATE-VOLTA NAS ESTAÇÕES E CENTRAIS (Se a logística pedir o giro imediato)
 	if _processar_logistica_passagem(t, grid_atual):
 		var dir_oposta = -dir_vinda
 		if dir_oposta == Vector2i.ZERO: dir_oposta = -t.get_meta("direcao_atual", Vector2i(-1,0))
@@ -822,6 +822,12 @@ func _decidir_proximo_passo(t, grid_atual: Vector2i, dir_vinda: Vector2i):
 		t.set_meta("direcao_atual", dir_oposta)
 		t.set_meta("alvo_grid", grid_atual + dir_oposta)
 		t.set_meta("ultima_direcao_valida", dir_oposta)
+		
+		# --- NOVA INTELIGÊNCIA ---
+		# Se ele bateu num beco sem saída e não encheu os vagões, 
+		# ele desiste de procurar estações e volta para descarregar o que pegou.
+		if t.get_meta("estado") == "INDO":
+			t.set_meta("estado", "VOLTANDO")
 	else:
 		# Continua viagem normalmente
 		t.set_meta("direcao_atual", nova_dir)
@@ -830,6 +836,7 @@ func _decidir_proximo_passo(t, grid_atual: Vector2i, dir_vinda: Vector2i):
 		
 		if tile and tile.has_method("disparar_gatilho_inteligente"):
 			tile.disparar_gatilho_inteligente()
+
 
 
 func _obter_saida_fisica(tipo, entrada: Vector2i, tile) -> Vector2i:
@@ -892,9 +899,9 @@ func _obter_saida_fisica(tipo, entrada: Vector2i, tile) -> Vector2i:
 
 
 func _processar_logistica_passagem(t, grid_atual: Vector2i) -> bool:
-	var carga_atual = t.get_meta("carga")
+	var cargas = t.get_meta("cargas")
 	var estado = t.get_meta("estado")
-	var tocou_terminal = false
+	var forcar_giro = false
 
 	for d in [Vector2i(0,-1), Vector2i(0,1), Vector2i(-1,0), Vector2i(1,0)]:
 		var n = grid_atual + d
@@ -903,35 +910,62 @@ func _processar_logistica_passagem(t, grid_atual: Vector2i) -> bool:
 
 			# Encostou numa Estação Amarela
 			if tipo_v == 8:
-				tocou_terminal = true
 				if estado == "INDO":
 					var recurso = estacoes_oferta.get(n, "")
-					t.set_meta("carga", recurso)
-					t.set_meta("estado", "VOLTANDO")
-					_atualizar_visual_carga(t.get_node("Vagao"), recurso, false)
-					_spawn_floating_text(t.position, "CARREGADO: " + recurso, Color.YELLOW)
-					_spawn_floating_text(t.position + Vector2(0, -40), "¡PIIII! 🚂", Color.WHITE)
+					var carregou = false
+					var vagoes_cheios = 0
+
+					# Preenche o primeiro vagão vazio na ordem
+					for i in range(cargas.size()):
+						if cargas[i] == "":
+							cargas[i] = recurso
+							carregou = true
+							_spawn_floating_text(t.position, "CARGA: " + recurso, Color.YELLOW)
+							break
+
+					# Conta quantos vagões estão cheios
+					for i in range(cargas.size()):
+						if cargas[i] != "": vagoes_cheios += 1
+
+					if carregou:
+						t.set_meta("cargas", cargas)
+						_atualizar_visuais_vagoes(t)
+						_spawn_floating_text(t.position + Vector2(0, -40), "¡PIIII! 🚂", Color.WHITE)
+
+					# Se todos os 3 vagões encheram, o trem não precisa mais avançar
+					if vagoes_cheios >= cargas.size():
+						t.set_meta("estado", "VOLTANDO")
+						forcar_giro = true
 
 			# Encostou na Central Rosa
 			elif tipo_v == 17:
-				tocou_terminal = true
-				if estado == "VOLTANDO" and carga_atual != "":
-					estoque[carga_atual] += 1
-					dinheiro += recompensas.get(carga_atual, 0)
-					receita_semanal += recompensas.get(carga_atual, 0)
-					
-					_spawn_floating_text(t.position, "ENTREGUE: +$" + str(recompensas.get(carga_atual, 0)), Color.GREEN)
-					_spawn_floating_text(t.position + Vector2(0, -40), "¡PIIII! 🚂", Color.WHITE)
+				if estado == "VOLTANDO":
+					var descarregou_algo = false
+					var total_receita = 0
 
-					t.set_meta("carga", "")
-					t.set_meta("estado", "INDO")
-					_atualizar_visual_carga(t.get_node("Vagao"), "", true)
-					_atualizar_status_bar()
-					_checar_vitoria()
+					# Descarrega todos os vagões simultaneamente
+					for i in range(cargas.size()):
+						var c_atual = cargas[i]
+						if c_atual != "":
+							estoque[c_atual] += 1
+							var valor = recompensas.get(c_atual, 0)
+							dinheiro += valor
+							receita_semanal += valor
+							total_receita += valor
+							cargas[i] = ""
+							descarregou_algo = true
 
-	# Se for true, o motor vai inverter o trem 180º no próximo passo
-	return tocou_terminal
+					if descarregou_algo:
+						_spawn_floating_text(t.position, "ENTREGUE: +$" + str(total_receita), Color.GREEN)
+						_spawn_floating_text(t.position + Vector2(0, -40), "¡PIIII! 🚂", Color.WHITE)
+						t.set_meta("cargas", cargas)
+						t.set_meta("estado", "INDO")
+						_atualizar_visuais_vagoes(t)
+						_atualizar_status_bar()
+						_checar_vitoria()
+						forcar_giro = true # Central sempre força o giro para voltar às minas
 
+	return forcar_giro
 
 
 func _verificar_colisoes():
@@ -1008,16 +1042,26 @@ func _spawnar_trem(pontos: Array[Vector2], id: String, carga: String, o: Vector2
 	loc.position = Vector2(-30, -20)
 	t.add_child(loc)
 	
-	var vag = ColorRect.new()
-	vag.name = "Vagao"
-	vag.size = Vector2(40, 30)
-	vag.color = Color(0.3, 0.3, 0.3)
-	vag.position = Vector2(-75, -15)
-	t.add_child(vag)
+	# --- ADIÇÃO: MÚLTIPLOS VAGÕES ---
+	var qtd_vagoes = 3
+	var array_cargas = []
 	
-	t.set_meta("carga", carga)
-	# --- MÁGICA DO ESTADO INICIAL ---
-	# Se nasceu vazio, está INDO. Se já nasceu com carga, ele já sai VOLTANDO.
+	for i in range(qtd_vagoes):
+		var vag = ColorRect.new()
+		vag.name = "Vagao_" + str(i)
+		vag.size = Vector2(40, 30)
+		vag.color = Color(0.3, 0.3, 0.3)
+		# Locomotiva é zero. Cada vagão vem atrás (espaçamento de 45px)
+		vag.position = Vector2(-75 - (i * 45), -15)
+		t.add_child(vag)
+		
+		# Se o trem já nasce carregado (via pincel manual), preenche o primeiro vagão
+		if i == 0 and carga != "":
+			array_cargas.append(carga)
+		else:
+			array_cargas.append("")
+			
+	t.set_meta("cargas", array_cargas)
 	t.set_meta("estado", "INDO" if carga == "" else "VOLTANDO")
 	t.set_meta("tempo_espera", 0.0)
 	t.set_meta("parada_concluida", false)
@@ -1033,20 +1077,31 @@ func _spawnar_trem(pontos: Array[Vector2], id: String, carga: String, o: Vector2
 	t.set_meta("alvo_grid", p_next)
 	t.set_meta("ultima_direcao_valida", d_ini)
 	
-	_atualizar_visual_carga(vag, carga, carga == "")
+	_atualizar_visuais_vagoes(t)
 
 
-func _atualizar_visual_carga(vagao, carga, vazio):
-	for c in vagao.get_children(): 
-		c.queue_free()
-		
-	vagao.color = Color(0.3, 0.3, 0.3) if vazio else Color(0.2, 0.2, 0.2)
-	if not vazio:
-		var c = ColorRect.new()
-		c.color = cores_carga.get(carga, Color.WHITE)
-		c.size = Vector2(30, 20)
-		c.position = Vector2(5, 5)
-		vagao.add_child(c)
+
+func _atualizar_visuais_vagoes(t: Node2D):
+	var cargas = t.get_meta("cargas")
+	for i in range(cargas.size()):
+		var vagao = t.get_node_or_null("Vagao_" + str(i))
+		if vagao:
+			# Limpa o vagão atual
+			for c in vagao.get_children(): 
+				c.queue_free()
+				
+			var carga_atual = cargas[i]
+			var vazio = (carga_atual == "")
+			vagao.color = Color(0.3, 0.3, 0.3) if vazio else Color(0.2, 0.2, 0.2)
+			
+			# Aplica a cor da carga específica deste vagão
+			if not vazio:
+				var c = ColorRect.new()
+				c.color = cores_carga.get(carga_atual, Color.WHITE)
+				c.size = Vector2(30, 20)
+				c.position = Vector2(5, 5)
+				vagao.add_child(c)
+
 
 func _grid_valido(x, y):
 	return x >= 0 and x < tamanho_mapa and y >= 0 and y < tamanho_mapa
